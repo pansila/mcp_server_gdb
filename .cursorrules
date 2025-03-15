@@ -1,0 +1,633 @@
+{
+  "metadata": {
+    "name": ".cursorrules",
+    "pseudonym": "Rust-Eze",
+    "version": "1.7.2",
+    "description": "Advanced Rust code analysis and correction system with enhanced context-specific error resolution strategies",
+    "maintainers": [
+      "LordXyn@proton.me"
+    ],
+    "author_github": "Lord Xyn <https://github.com/arcmoonstudios/Rust-Eze>",
+    "last_updated": "2024-12-06",
+    "changelog": {
+      "1.3.0": "Added enhanced argument matching, error prevention, and code organization rules",
+      "1.3.1": "Refined formatting rules, clarified documentation formats, and improved internal consistency",
+      "1.4.0": "Introduced common error pattern recognition and heuristic-driven suggestions for complex compiler errors",
+      "1.5.0": "Expanded patterns to handle no-variant errors, conflicting implementations, `?` operator misuse, and missing structure fields",
+      "1.6.0": "Added patterns for invalid type category usage, invalid trait references, and invalid self parameter usage",
+      "1.7.0": "Enhanced to handle trait bound failures, ambiguous items, and additional missing `default` method scenarios",
+      "1.7.1": "Re-implemented prior correcting implementations that were erroneously removed, added author and github links to metadata",
+      "1.7.2": "Added extensive performance optimization, IDE integration, LSP support, and memory management configurations"
+    }
+  },
+  "language": "rust",
+  "performance": {
+    "caching": {
+      "enable": true,
+      "max_cache_size": "512MB",
+      "cache_duration": "24h",
+      "cache_invalidation": "on_file_change"
+    },
+    "parallel_processing": {
+      "enable": true,
+      "max_threads": 4,
+      "priority_tasks": ["error_analysis", "code_completion"]
+    },
+    "lazy_loading": {
+      "enable": true,
+      "modules": ["documentation", "advanced_analysis"]
+    }
+  },
+  "ide_integration": {
+    "cursor_specific": {
+      "completion_triggers": [".", "::", "(", "{", "["],
+      "hover_documentation": true,
+      "inline_hints": true,
+      "code_actions": {
+        "quick_fixes": true,
+        "refactorings": true
+      }
+    },
+    "keybindings": {
+      "quick_fix": "Alt+Enter",
+      "show_documentation": "Ctrl+Q",
+      "goto_definition": "Ctrl+Click"
+    }
+  },
+  "lsp": {
+    "rust_analyzer": {
+      "enable": true,
+      "checkOnSave": true,
+      "procMacro": {
+        "enable": true
+      },
+      "cargo": {
+        "allFeatures": true,
+        "loadOutDirsFromCheck": true
+      }
+    },
+    "diagnostics": {
+      "enable": true,
+      "experimental": true
+    }
+  },
+  "file_watching": {
+    "enable": true,
+    "watch_patterns": ["**/*.rs", "Cargo.toml", "Cargo.lock"],
+    "ignore_patterns": ["target/**", ".git/**"],
+    "auto_reload": {
+      "enable": true,
+      "delay_ms": 500
+    }
+  },
+  "memory_management": {
+    "max_memory": "2GB",
+    "garbage_collection": {
+      "enable": true,
+      "interval": "5m"
+    },
+    "buffer_size": {
+      "analysis": "256MB",
+      "completion": "128MB"
+    }
+  },
+  "execution": {
+    "commands": {
+      "check": {
+        "command": "cargo check",
+        "priority": 1,
+        "category": "build_errors",
+        "description": "Check the code for compilation errors without producing a binary.",
+        "validation": {
+          "run_before_changes": true,
+          "run_after_each_change": true
+        },
+        "explanation": "Ensures code is always compilable, catching basic errors early."
+      },
+      "clippy": {
+        "command": "cargo clippy",
+        "priority": 2,
+        "category": "safety_issues",
+        "description": "Run Clippy lints to detect common mistakes and improve code safety.",
+        "lint_levels": [
+          "warn",
+          "deny"
+        ],
+        "explanation": "Lints help maintain high code quality and identify potential safety risks."
+      },
+      "test": {
+        "command": "cargo test",
+        "priority": 3,
+        "category": "test_failures",
+        "description": "Execute test suites to ensure correct functionality and regression detection.",
+        "test_types": [
+          "unit",
+          "integration",
+          "doc"
+        ],
+        "explanation": "Testing verifies that changes do not break existing behavior and meet intended functionality."
+      },
+      "fmt": {
+        "command": "cargo fmt -- --check",
+        "priority": 4,
+        "category": "style",
+        "description": "Check code formatting against Rustfmt guidelines to maintain style consistency.",
+        "explanation": "Ensures code remains readable and follows community formatting conventions."
+      }
+    },
+    "environment": {
+      "extra_env": {
+        "type": "object",
+        "description": "Extra environment variables for running and debugging",
+        "default": {},
+        "scope": "workspace"
+      },
+      "persist_environment": true,
+      "allow_workspace_override": true,
+      "explanation": "Enable flexible environment settings for different development and CI contexts."
+    }
+  },
+  "rules": {
+    "response_format": {
+      "type": "code_block",
+      "language": "rust",
+      "enclosure": "```rust",
+      "end_enclosure": "```",
+      "constraints": {
+        "use_only_two_backticks": true,
+        "no_additional_code_blocks": true,
+        "avoid_markdown_headers": true,
+        "no_asterisks_or_other_markdown_symbols": true,
+        "maintain_indentation": true,
+        "preserve_comments": true,
+        "explanation": "Format responses as a single Rust code block for clarity."
+      }
+    },
+    "module_referencing": {
+      "prefix": "@",
+      "examples": [
+        "@module.rs",
+        "@current_module.rs",
+        "@other_module.rs",
+        "@lib.rs",
+        "@mod.rs"
+      ],
+      "import_syntax": [
+        "use crate::...",
+        "pub use::...",
+        "use super::...",
+        "use self::..."
+      ],
+      "module_patterns": [
+        "mod {name};",
+        "pub mod {name};",
+        "mod {name} { ... }"
+      ],
+      "explanation": "Standardize referencing and structuring modules for clarity and maintainability."
+    }
+  },
+  "error_handling": {
+    "priority_order": [
+      "build_errors",
+      "safety_issues",
+      "test_failures",
+      "style"
+    ],
+    "real_time_analysis": {
+      "enable": true,
+      "debounce_ms": 300,
+      "max_file_size": "1MB"
+    },
+    "error_aggregation": {
+      "group_similar_errors": true,
+      "max_suggestions_per_error": 3,
+      "prioritize_quick_fixes": true
+    },
+    "error_prevention": {
+      "check_before_modification": true,
+      "validate_changes": true,
+      "prevent_new_errors": {
+        "enabled": true,
+        "strategies": [
+          "verify_type_compatibility",
+          "check_ownership_implications",
+          "validate_scope_changes",
+          "ensure_visibility_correctness",
+          "verify_trait_bounds"
+        ],
+        "validation_steps": [
+          "compile_check_after_each_change",
+          "verify_no_new_warnings",
+          "test_affected_modules"
+        ],
+        "explanation": "Prevent regressions by systematically validating that new fixes don't introduce new errors."
+      }
+    },
+    "unused_imports": {
+      "strategy": "implement_or_justify",
+      "actions": [
+        "find_potential_uses",
+        "suggest_implementations",
+        "create_placeholder_usage"
+      ],
+      "implementation_patterns": {
+        "types": "Create type alias or struct implementation",
+        "traits": "Implement trait for existing type",
+        "functions": "Create wrapper or utility function",
+        "modules": "Create new module structure"
+      },
+      "explanation": "Unused imports can be removed or repurposed to maintain a clean, useful codebase."
+    },
+    "recommendation_requirements": {
+      "minimum_per_error": 3,
+      "maximum_per_error": 7,
+      "actionable": true,
+      "proper_rust_syntax": true,
+      "utilize_unused_imports_if_beneficial": true,
+      "maintain_code_style": true,
+      "preserve_documentation": true,
+      "consider_dependencies": true,
+      "explanation": "Ensure all recommendations are actionable, style-compliant, and well-formed."
+    },
+    "argument_matching": {
+      "check_function_calls": true,
+      "validate_argument_types": true,
+      "suggest_type_conversions": true,
+      "match_patterns": {
+        "check_destructuring": true,
+        "validate_enum_patterns": true,
+        "ensure_exhaustive_matching": true
+      },
+      "explanation": "Improve reliability by ensuring arguments and patterns match function signatures and enum variants."
+    },
+    "error_types": [
+      "missing_items",
+      "unused_imports",
+      "incorrect_module_definitions",
+      "type_mismatches",
+      "missing_imports",
+      "visibility_issues",
+      "lifetime_errors",
+      "trait_bounds",
+      "ownership_issues",
+      "borrowing_errors",
+      "async_trait_violations",
+      "derive_macro_errors",
+      "argument_mismatches",
+      "pattern_matching_errors",
+      "unimplemented_trait_method",
+      "incorrect_argument_count",
+      "unresolved_imports",
+      "duplicate_definitions",
+      "unused_variables",
+      "non_future_await",
+      "unknown_fields",
+      "invalid_type_category",
+      "invalid_trait_reference",
+      "invalid_self_parameter_usage",
+      "ambiguous_items",
+      "trait_bound_failures"
+    ],
+    "analysis": {
+      "root_cause_identification": {
+        "check_module_hierarchy": true,
+        "analyze_public_interface": true,
+        "check_type_signatures": true,
+        "validate_ownership_patterns": true,
+        "examine_module_dependencies": true,
+        "inspect_unsafe_blocks": true
+      },
+      "explanation": "Identifies underlying causes so that recommended fixes address the real problem."
+    },
+    "common_error_patterns": {
+      "unresolved_imports": {
+        "detection": "Contains 'unresolved import'",
+        "fix_strategies": [
+          "Check if the module or crate is included in Cargo.toml",
+          "Add `use` statement for the trait or module",
+          "If import was renamed, correct the path"
+        ]
+      },
+      "missing_items": {
+        "detection": "Contains 'no method named' or 'not found in'",
+        "fix_strategies": [
+          "Import the trait that defines the missing item",
+          "Implement the required method or trait on the type",
+          "Check for typos or look for suggested similar item names",
+          "Change the type to one that implements the required trait",
+          "If the missing item is `default`, consider implementing or deriving the `Default` trait"
+        ]
+      },
+      "type_mismatches": {
+        "detection": "Contains 'mismatched types'",
+        "fix_strategies": [
+          "Apply type conversion methods (e.g., `as_slice()`, `.to_vec()`, `.clone()`)",
+          "Adjust function signatures or argument types to match the caller"
+        ]
+      },
+      "duplicate_definitions": {
+        "detection": "Contains 'defined multiple times' or 'duplicate definitions'",
+        "fix_strategies": [
+          "Remove or rename one of the duplicate definitions",
+          "Use `as` syntax to rename imports"
+        ]
+      },
+      "unused_variables": {
+        "detection": "Contains 'unused variable'",
+        "fix_strategies": [
+          "Prefix the variable name with `_` if it's intentionally unused",
+          "Remove the variable if unnecessary"
+        ]
+      },
+      "non_future_await": {
+        "detection": "Contains 'is not a future'",
+        "fix_strategies": [
+          "Remove `.await` from non-future values",
+          "Convert Result types to futures if appropriate"
+        ]
+      },
+      "unknown_fields": {
+        "detection": "Contains 'no field'",
+        "fix_strategies": [
+          "Check the struct definition for available fields",
+          "Update the field name to an existing one",
+          "Add the missing field if it's intended to exist"
+        ]
+      },
+      "incorrect_argument_count": {
+        "detection": "Contains 'expected' and 'found' arguments",
+        "fix_strategies": [
+          "Add or remove arguments to match the function signature",
+          "Check the function definition and documentation for required parameters"
+        ]
+      },
+      "no_variant_or_associated_item": {
+        "detection": "Contains 'no variant or associated item named'",
+        "fix_strategies": [
+          "Ensure that the enum variant or associated item exists",
+          "If renamed or moved, update the reference",
+          "Add the missing variant to the enum if intended",
+          "Check the enum definition and confirm the spelling"
+        ]
+      },
+      "conflicting_implementations": {
+        "detection": "Contains 'conflicting implementations of trait'",
+        "fix_strategies": [
+          "Remove one of the implementations",
+          "Consolidate the trait logic into a single implementation block",
+          "Ensure multiple impl blocks are for distinct types or conditions"
+        ]
+      },
+      "try_operator_errors": {
+        "detection": "Contains 'the `?` operator can only be applied'",
+        "fix_strategies": [
+          "Remove the `?` operator from non-Result/Option values",
+          "Wrap the value in a Result if appropriate",
+          "Implement the `Try` trait if custom logic is needed",
+          "Consider changing the return type to a `Result` if error handling is intended"
+        ]
+      },
+      "missing_structure_fields": {
+        "detection": "Contains 'missing fields' or 'missing structure fields'",
+        "fix_strategies": [
+          "Provide values for all missing fields",
+          "If `Default` is implemented, consider `..Default::default()` to fill in missing fields",
+          "Check the struct definition and ensure all required fields are initialized"
+        ]
+      },
+      "invalid_type_category": {
+        "detection": "Contains 'expected struct, variant or union type'",
+        "fix_strategies": [
+          "Check the type used and ensure it's of the correct kind",
+          "Use a struct, variant, or union instead of the provided enum",
+          "Modify the code to match the expected type category"
+        ]
+      },
+      "invalid_trait_reference": {
+        "detection": "Contains 'expected trait, found derive macro'",
+        "fix_strategies": [
+          "Use the appropriate trait instead of the derive macro",
+          "Import the correct trait (e.g., `use std::hash::Hash;`)",
+          "Remove the invalid reference and replace it with a valid trait"
+        ]
+      },
+      "invalid_self_parameter_usage": {
+        "detection": "Contains '`self` parameter is only allowed in associated functions'",
+        "fix_strategies": [
+          "Define the function inside an `impl` or `trait` block",
+          "Remove the `self` parameter if it's not an associated function",
+          "Convert the standalone function into an associated method with `impl`"
+        ]
+      },
+      "ambiguous_items": {
+        "detection": "Contains 'multiple applicable items in scope'",
+        "fix_strategies": [
+          "Use fully qualified syntax to specify which item to use",
+          "Remove or rename one of the conflicting items",
+          "Disambiguate by importing only the desired trait or item"
+        ]
+      },
+      "trait_bound_failures": {
+        "detection": "Contains 'the following trait bounds were not satisfied' or 'trait ... is not implemented'",
+        "fix_strategies": [
+          "Implement the required trait for the type",
+          "Use `#[derive(...)]` to add the missing trait implementation",
+          "Add a where clause or adjust the type signature to satisfy the trait bound"
+        ]
+      },
+      "explanation": "Maps common Rust compiler errors to known fix strategies for more automated corrections."
+    }
+  },
+  "code_refinement": {
+    "constants": {
+      "placement": "below_imports",
+      "naming": {
+        "style": "SCREAMING_SNAKE_CASE",
+        "descriptive": true,
+        "prefix_by_type": {
+          "timeout": "TIMEOUT_",
+          "max_value": "MAX_",
+          "min_value": "MIN_",
+          "default": "DEFAULT_"
+        }
+      },
+      "organization": {
+        "group_by_purpose": true,
+        "order": [
+          "configuration_constants",
+          "business_logic_constants",
+          "error_constants",
+          "default_values"
+        ]
+      },
+      "documentation": {
+        "required": true,
+        "format": "// {description}",
+        "include_units": true,
+        "include_rationale": true
+      },
+      "explanation": "Well-structured and documented constants improve code clarity and maintainability."
+    },
+    "magic_numbers": {
+      "detection": true,
+      "auto_replace": true,
+      "naming_template": "{PURPOSE}_{UNIT}",
+      "relocation": {
+        "target": "constants_section",
+        "maintain_grouping": true,
+        "update_references": true
+      },
+      "explanation": "Replace magic numbers with named constants for improved clarity."
+    },
+    "error_handling_patterns": {
+      "prefer_result_type": true,
+      "custom_error_types": {
+        "create_per_module": true,
+        "include_conversion": true,
+        "implement_std_error": true
+      },
+      "error_propagation": {
+        "use_question_mark": true,
+        "add_context": true
+      },
+      "explanation": "Consistent error handling patterns encourage reliable and maintainable error management."
+    }
+  },
+  "documentation": {
+    "changes": {
+      "required": true,
+      "format": {
+        "errors": "array of strings",
+        "changes": "array of strings",
+        "rationale": "string",
+        "implications": {
+          "performance": "optional string",
+          "safety": "optional string"
+        }
+      },
+      "explanation": "Documenting changes ensures transparency and reasoning behind each fix."
+    },
+    "inline_comments": {
+      "required": true,
+      "format": "// {explanation}",
+      "explanation": "Inline comments clarify complex code logic and decisions."
+    },
+    "requirements": {
+      "require_doc_comments": true,
+      "preserve_existing_docs": true,
+      "update_documentation": true,
+      "required_sections": [
+        "purpose",
+        "parameters",
+        "returns",
+        "panics",
+        "safety",
+        "errors",
+        "examples"
+      ],
+      "guidelines": "All public items must have clear doc comments covering rationale, usage, implications, and examples.",
+      "explanation": "Comprehensive documentation fosters understanding and reduces maintenance overhead."
+    }
+  },
+  "behavior": {
+    "avoid_questions": true,
+    "provide_direct_guidance": true,
+    "focus_on_error_resolution": true,
+    "ensure_no_additional_errors": true,
+    "preserve_existing_functionality": true,
+    "maintain_code_organization": true,
+    "respect_rustfmt_settings": true,
+    "implement_over_remove": true,
+    "explanation": "Behavioral rules ensure that fixes are direct, safe, and respect the existing codebase structure."
+  },
+  "analysis": {
+    "static": {
+      "lint_checks": true,
+      "unsafe_code_detection": true,
+      "dead_code_detection": true,
+      "complexity_metrics": true,
+      "dependency_analysis": true
+    },
+    "semantic": {
+      "type_inference": true,
+      "borrow_checker": true,
+      "lifetime_validation": true,
+      "trait_resolution": true,
+      "argument_matching": true
+    },
+    "optimization": {
+      "performance_improvements": true,
+      "memory_optimizations": true,
+      "code_organization": true,
+      "import_optimization": true
+    },
+    "explanation": "Comprehensive analysis supports well-informed suggestions and high-quality code."
+  },
+  "implementation": {
+    "preferred_approach": "implement",
+    "avoid_removing": true,
+    "fix_order": "priority_based",
+    "validation": {
+      "run_checks_after_fixes": true,
+      "require_all_tests_pass": true,
+      "ensure_no_regressions": true,
+      "verify_no_new_errors": true
+    },
+    "unused_code": {
+      "strategy": "implement_or_justify",
+      "create_tests": true,
+      "add_documentation": true
+    },
+    "explanation": "Implements fixes systematically, verifying that no regressions or new errors emerge."
+  },
+  "safety": {
+    "unsafe_code": {
+      "require_justification": true,
+      "document_risks": true,
+      "prefer_safe_alternatives": true,
+      "review_requirements": {
+        "document_invariants": true,
+        "explain_safety_guarantees": true
+      }
+    },
+    "error_handling": {
+      "prefer_result_over_panic": true,
+      "require_error_types": true,
+      "document_failure_cases": true,
+      "propagation_strategy": "use_question_mark"
+    },
+    "explanation": "Safety first: ensure unsafe code is justified and error handling is robust and well-documented."
+  },
+  "output": {
+    "format": "markdown",
+    "template": "### Error Resolution Report\n\n**Location:** `@{module_name}.rs`\n\n**Error:** `{error_description}`\n\n**Root Cause:** `{root_cause}`\n\n**Proposed Fixes:**\n```rust\n{proposed_fixes}\n```\n\n**Verification Steps:**\n{verification_steps}\n\n**Additional Considerations:**\n{considerations}",
+    "structure": {
+      "error_resolution_report": {
+        "location": "@{module_name}.rs",
+        "error": "{error_description}",
+        "root_cause": "{root_cause}",
+        "proposed_fixes": [
+          {
+            "code": "{fix_code}",
+            "explanation": "{fix_explanation}",
+            "impact": "{fix_impact}",
+            "prerequisites": [
+              "{prerequisite}"
+            ]
+          }
+        ],
+        "verification_steps": [
+          "Step 1",
+          "Step 2",
+          "Step 3"
+        ],
+        "considerations": [
+          "Consideration 1",
+          "Consideration 2",
+          "Consideration 3",
+          "Consideration 4"
+        ]
+      }
+    }
+  }
+}
