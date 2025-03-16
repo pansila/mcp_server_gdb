@@ -59,8 +59,8 @@ pub async fn close_session_tool(session_id: String) -> Result<ToolResponseConten
     params(session_id = "The ID of the GDB session")
 )]
 pub async fn start_debugging_tool(session_id: String) -> Result<ToolResponseContent> {
-    GDB_MANAGER.start_debugging(&session_id).await?;
-    Ok(tool_text_content!("Started debugging".to_string()))
+    let ret = GDB_MANAGER.start_debugging(&session_id).await?;
+    Ok(tool_text_content!(format!("Started debugging: {}", ret)))
 }
 
 #[tool(
@@ -69,8 +69,8 @@ pub async fn start_debugging_tool(session_id: String) -> Result<ToolResponseCont
     params(session_id = "The ID of the GDB session")
 )]
 pub async fn stop_debugging_tool(session_id: String) -> Result<ToolResponseContent> {
-    GDB_MANAGER.stop_debugging(&session_id).await?;
-    Ok(tool_text_content!("Stopped debugging".to_string()))
+    let ret = GDB_MANAGER.stop_debugging(&session_id).await?;
+    Ok(tool_text_content!(format!("Stopped debugging: {}", ret)))
 }
 
 #[tool(
@@ -119,10 +119,10 @@ pub async fn delete_breakpoint_tool(
     session_id: String,
     breakpoint_id: String,
 ) -> Result<ToolResponseContent> {
-    GDB_MANAGER
+    let ret = GDB_MANAGER
         .delete_breakpoint(&session_id, &breakpoint_id)
         .await?;
-    Ok(tool_text_content!("Deleted breakpoint".to_string()))
+    Ok(tool_text_content!(format!("Deleted breakpoint: {}", ret)))
 }
 
 #[tool(
@@ -162,8 +162,8 @@ pub async fn get_local_variables_tool(
     params(session_id = "The ID of the GDB session")
 )]
 pub async fn continue_execution_tool(session_id: String) -> Result<ToolResponseContent> {
-    GDB_MANAGER.continue_execution(&session_id).await?;
-    Ok(tool_text_content!("Continued execution".to_string()))
+    let ret = GDB_MANAGER.continue_execution(&session_id).await?;
+    Ok(tool_text_content!(format!("Continued execution: {}", ret)))
 }
 
 #[tool(
@@ -172,8 +172,8 @@ pub async fn continue_execution_tool(session_id: String) -> Result<ToolResponseC
     params(session_id = "The ID of the GDB session")
 )]
 pub async fn step_execution_tool(session_id: String) -> Result<ToolResponseContent> {
-    GDB_MANAGER.step_execution(&session_id).await?;
-    Ok(tool_text_content!("Stepped into next line".to_string()))
+    let ret = GDB_MANAGER.step_execution(&session_id).await?;
+    Ok(tool_text_content!(format!("Stepped into next line: {}", ret)))
 }
 
 #[tool(
@@ -182,8 +182,8 @@ pub async fn step_execution_tool(session_id: String) -> Result<ToolResponseConte
     params(session_id = "The ID of the GDB session")
 )]
 pub async fn next_execution_tool(session_id: String) -> Result<ToolResponseContent> {
-    GDB_MANAGER.next_execution(&session_id).await?;
-    Ok(tool_text_content!("Stepped over next line".to_string()))
+    let ret = GDB_MANAGER.next_execution(&session_id).await?;
+    Ok(tool_text_content!(format!("Stepped over next line: {}", ret)))
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use mcp_core::{
     transport::{ClientSseTransport, ClientSseTransportBuilder, ClientStdioTransport},
     types::{ClientCapabilities, Implementation, ToolResponseContent},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::{debug, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -42,7 +42,11 @@ struct Args {
 }
 
 // Helper function to call the call_tool method on any type of client
-async fn call_tool(client: &Box<dyn Any>, tool_name: &str, params: Option<Value>) -> Result<Vec<ToolResponseContent>> {
+async fn call_tool(
+    client: &Box<dyn Any>,
+    tool_name: &str,
+    params: Option<Value>,
+) -> Result<Vec<ToolResponseContent>> {
     info!("Calling tool: {}", tool_name);
     debug!("Params: {:?}", params);
     if let Some(client) = client.downcast_ref::<Client<ClientStdioTransport>>() {
@@ -75,8 +79,10 @@ async fn main() -> Result<()> {
     // Create client based on transport type
     let client: Box<dyn Any> = match args.transport {
         TransportType::Stdio => {
-            let transport =
-                ClientStdioTransport::new("./target/debug/mcp_server_gdb", &["--log-level", "debug"])?;
+            let transport = ClientStdioTransport::new(
+                "./target/debug/mcp_server_gdb",
+                &["--log-level", "debug"],
+            )?;
             let client = ClientBuilder::new(transport).build();
 
             // Connect to server
@@ -111,7 +117,8 @@ async fn main() -> Result<()> {
     let session_response = call_tool(
         &client,
         "create_session",
-        args.executable.map(|path| json!({ "executable_path": path })),
+        args.executable
+            .map(|path| json!({ "executable_path": path })),
     )
     .await?;
 

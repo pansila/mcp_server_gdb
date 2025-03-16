@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::{
     config::Config,
     error::{AppError, AppResult},
-    models::{Breakpoint, GDBCommandResponse, GDBSession, GDBSessionStatus, StackFrame, Variable},
+    models::{Breakpoint, GDBSession, GDBSessionStatus, StackFrame, Variable},
 };
 
 /// GDB Session Manager
@@ -148,7 +148,7 @@ impl GDBManager {
         &self,
         session_id: &str,
         command: &str,
-    ) -> AppResult<GDBCommandResponse> {
+    ) -> AppResult<String> {
         let sessions = self.sessions.read().await;
         let handle = sessions
             .get(session_id)
@@ -158,24 +158,20 @@ impl GDBManager {
 
         // Parse output
         let success = !output.contains("^error");
-        let error = if !success {
+        if !success {
             // Extract error message
             static ERROR_REGEX: LazyLock<Regex> =
                 LazyLock::new(|| Regex::new(r#"\^error,msg="(.+)""#).unwrap());
 
-            ERROR_REGEX
+            let error = ERROR_REGEX
                 .captures(&output)
                 .and_then(|caps| caps.get(1))
                 .map(|m| m.as_str().to_string())
-        } else {
-            None
-        };
+                .unwrap_or_else(|| "Unknown error".to_string());
+            return Err(AppError::GDBError(error));
+        }
 
-        Ok(GDBCommandResponse {
-            success,
-            output,
-            error,
-        })
+        Ok(output)
     }
 
     /// Send raw command to GDB
@@ -250,7 +246,7 @@ impl GDBManager {
         &self,
         session_id: &str,
         command: &str,
-    ) -> AppResult<GDBCommandResponse> {
+    ) -> AppResult<String> {
         let command_timeout = self.config.command_timeout;
         match tokio::time::timeout(
             Duration::from_secs(command_timeout),
@@ -258,27 +254,19 @@ impl GDBManager {
         )
         .await
         {
-            Ok(result) => result,
-            Err(_) => Err(AppError::GDBError(format!(
-                "GDB command '{}' timed out",
-                command
-            ))),
+            Ok(Ok(result)) => {
+                Ok(result)
+            }
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(AppError::GDBTimeout),
         }
     }
 
     /// Start debugging
-    pub async fn start_debugging(&self, session_id: &str) -> AppResult<()> {
+    pub async fn start_debugging(&self, session_id: &str) -> AppResult<String> {
         let response = self
             .send_command_with_timeout(session_id, "-exec-run")
             .await?;
-
-        if !response.success {
-            return Err(AppError::GDBError(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to start debugging".to_string()),
-            ));
-        }
 
         // Update session status
         let mut sessions = self.sessions.write().await;
@@ -286,22 +274,14 @@ impl GDBManager {
             handle.info.status = GDBSessionStatus::Running;
         }
 
-        Ok(())
+        Ok(response)
     }
 
     /// Stop debugging
-    pub async fn stop_debugging(&self, session_id: &str) -> AppResult<()> {
+    pub async fn stop_debugging(&self, session_id: &str) -> AppResult<String> {
         let response = self
             .send_command_with_timeout(session_id, "-exec-interrupt")
             .await?;
-
-        if !response.success {
-            return Err(AppError::GDBError(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to stop debugging".to_string()),
-            ));
-        }
 
         // Update session status
         let mut sessions = self.sessions.write().await;
@@ -309,7 +289,7 @@ impl GDBManager {
             handle.info.status = GDBSessionStatus::Stopped;
         }
 
-        Ok(())
+        Ok(response)
     }
 
     /// Get breakpoint list
@@ -317,14 +297,6 @@ impl GDBManager {
         let response = self
             .send_command_with_timeout(session_id, "-break-list")
             .await?;
-
-        if !response.success {
-            return Err(AppError::GDBError(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to get breakpoint list".to_string()),
-            ));
-        }
 
         // Parse breakpoint information (simplified version, actually needs more complex parsing)
         let breakpoints = Vec::new();
@@ -345,14 +317,6 @@ impl GDBManager {
         let command = format!("-break-insert {}:{}", file, line);
         let response = self.send_command_with_timeout(session_id, &command).await?;
 
-        if !response.success {
-            return Err(AppError::GDBError(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to set breakpoint".to_string()),
-            ));
-        }
-
         // Parse breakpoint ID (simplified)
         let breakpoint_id = Uuid::new_v4().to_string(); // Should actually be extracted from response
 
@@ -365,19 +329,15 @@ impl GDBManager {
     }
 
     /// Delete breakpoint
-    pub async fn delete_breakpoint(&self, session_id: &str, breakpoint_id: &str) -> AppResult<()> {
+    pub async fn delete_breakpoint(
+        &self,
+        session_id: &str,
+        breakpoint_id: &str,
+    ) -> AppResult<String> {
         let command = format!("-break-delete {}", breakpoint_id);
         let response = self.send_command_with_timeout(session_id, &command).await?;
 
-        if !response.success {
-            return Err(AppError::GDBError(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to delete breakpoint".to_string()),
-            ));
-        }
-
-        Ok(())
+        Ok(response)
     }
 
     /// Get stack frames
@@ -385,14 +345,6 @@ impl GDBManager {
         let response = self
             .send_command_with_timeout(session_id, "-stack-list-frames")
             .await?;
-
-        if !response.success {
-            return Err(AppError::GDBError(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to get stack frames".to_string()),
-            ));
-        }
 
         // Parse stack frame information (simplified)
         let frames = Vec::new(); // Actually needs to parse response
@@ -409,14 +361,6 @@ impl GDBManager {
         let command = format!("-stack-list-variables --frame {} --simple-values", frame_id);
         let response = self.send_command_with_timeout(session_id, &command).await?;
 
-        if !response.success {
-            return Err(AppError::GDBError(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to get local variables".to_string()),
-            ));
-        }
-
         // Parse variable information (simplified)
         let variables = Vec::new(); // Actually needs to parse response
 
@@ -424,18 +368,10 @@ impl GDBManager {
     }
 
     /// Continue execution
-    pub async fn continue_execution(&self, session_id: &str) -> AppResult<()> {
+    pub async fn continue_execution(&self, session_id: &str) -> AppResult<String> {
         let response = self
             .send_command_with_timeout(session_id, "-exec-continue")
             .await?;
-
-        if !response.success {
-            return Err(AppError::GDBError(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to continue execution".to_string()),
-            ));
-        }
 
         // Update session status
         let mut sessions = self.sessions.write().await;
@@ -443,40 +379,24 @@ impl GDBManager {
             handle.info.status = GDBSessionStatus::Running;
         }
 
-        Ok(())
+        Ok(response)
     }
 
     /// Step execution
-    pub async fn step_execution(&self, session_id: &str) -> AppResult<()> {
+    pub async fn step_execution(&self, session_id: &str) -> AppResult<String> {
         let response = self
             .send_command_with_timeout(session_id, "-exec-step")
             .await?;
 
-        if !response.success {
-            return Err(AppError::GDBError(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to step execution".to_string()),
-            ));
-        }
-
-        Ok(())
+        Ok(response)
     }
 
     /// Next execution
-    pub async fn next_execution(&self, session_id: &str) -> AppResult<()> {
+    pub async fn next_execution(&self, session_id: &str) -> AppResult<String> {
         let response = self
             .send_command_with_timeout(session_id, "-exec-next")
             .await?;
 
-        if !response.success {
-            return Err(AppError::GDBError(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to execute next step".to_string()),
-            ));
-        }
-
-        Ok(())
+        Ok(response)
     }
 }

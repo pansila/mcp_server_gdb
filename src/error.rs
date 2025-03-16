@@ -6,6 +6,9 @@ pub enum AppError {
     #[error("GDB error: {0}")]
     GDBError(String),
 
+    #[error("GDB timeout")]
+    GDBTimeout,
+
     #[error("Parse error: {0}")]
     #[allow(dead_code)]
     ParseError(String),

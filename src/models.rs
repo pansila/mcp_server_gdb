@@ -33,17 +33,6 @@ pub struct GDBCommandRequest {
     pub command: String,
 }
 
-/// GDB command response
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GDBCommandResponse {
-    /// Success status
-    pub success: bool,
-    /// Response content
-    pub output: String,
-    /// Error message (if any)
-    pub error: Option<String>,
-}
-
 /// Create session request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSessionRequest {
