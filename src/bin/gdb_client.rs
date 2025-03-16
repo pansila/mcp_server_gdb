@@ -1,11 +1,13 @@
+use std::any::Any;
+
 use anyhow::{Result, bail};
 use clap::{Parser, ValueEnum};
 use mcp_core::{
-    client::ClientBuilder,
-    transport::{ClientSseTransportBuilder, ClientStdioTransport},
+    client::{Client, ClientBuilder},
+    transport::{ClientSseTransport, ClientSseTransportBuilder, ClientStdioTransport},
     types::{ClientCapabilities, Implementation, ToolResponseContent},
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use tracing::{debug, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -39,6 +41,21 @@ struct Args {
     executable: Option<String>,
 }
 
+// Helper function to call the call_tool method on any type of client
+async fn call_tool(client: &Box<dyn Any>, tool_name: &str, params: Option<Value>) -> Result<Vec<ToolResponseContent>> {
+    info!("Calling tool: {}", tool_name);
+    debug!("Params: {:?}", params);
+    if let Some(client) = client.downcast_ref::<Client<ClientStdioTransport>>() {
+        let response = client.call_tool(tool_name, params).await?;
+        Ok(response.content)
+    } else if let Some(client) = client.downcast_ref::<Client<ClientSseTransport>>() {
+        let response = client.call_tool(tool_name, params).await?;
+        Ok(response.content)
+    } else {
+        bail!("Unknown client type")
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv::dotenv().ok();
@@ -55,35 +72,12 @@ async fn main() -> Result<()> {
 
     info!("Starting GDB client");
 
-    // Create client
-    let stdio_client = if args.transport == TransportType::Stdio {
-        let transport =
-            ClientStdioTransport::new("./target/debug/mcp_server_gdb", &["--log-level", "debug"])?;
-        Some(ClientBuilder::new(transport).build())
-    } else {
-        None
-    };
-
-    debug!("stdio_client created: {}", stdio_client.is_some());
-
-    let sse_client = if args.transport == TransportType::Sse {
-        let url = format!("http://{}:{}", args.server_host, args.server_port);
-        let transport = ClientSseTransportBuilder::new(url).build();
-        Some(ClientBuilder::new(transport).build())
-    } else {
-        None
-    };
-
-    debug!("SSE client created: {}", sse_client.is_some());
-
-    // Clone executable in advance to avoid move issues
-    let executable_clone1 = args.executable.clone();
-    let executable_clone2 = args.executable.clone();
-
-    // Choose client based on transport type
-    match args.transport {
+    // Create client based on transport type
+    let client: Box<dyn Any> = match args.transport {
         TransportType::Stdio => {
-            let client = stdio_client.unwrap();
+            let transport =
+                ClientStdioTransport::new("./target/debug/mcp_server_gdb", &["--log-level", "debug"])?;
+            let client = ClientBuilder::new(transport).build();
 
             // Connect to server
             client.open().await?;
@@ -99,172 +93,87 @@ async fn main() -> Result<()> {
                 )
                 .await?;
 
-            // Create GDB session
-            let session_response = client
-                .call_tool(
-                    "create_session",
-                    executable_clone1.map(|path| json!({ "executable_path": path })),
-                )
-                .await?;
-
-            info!("Session creation response: {:?}", session_response);
-
-            // Extract session ID from response
-            let content = session_response.content.first().unwrap();
-            let session_id;
-            if let ToolResponseContent::Text { text } = content {
-                session_id = text.split_once(": ").unwrap().1.split('"').next().unwrap();
-            } else {
-                bail!("Unable to parse session ID");
-            }
-
-            info!("Session ID: {}", session_id);
-
-            // Set breakpoint
-            if let Some(executable) = &executable_clone2 {
-                info!("Setting breakpoint at test_app.rs:5");
-                let breakpoint_response = client
-                    .call_tool(
-                        "set_breakpoint",
-                        Some(json!({
-                            "session_id": session_id,
-                            "file": "test_app.rs",
-                            "line": 5
-                        })),
-                    )
-                    .await?;
-                info!("Breakpoint response: {:?}", breakpoint_response);
-            }
-
-            // Start debugging
-            info!("Starting debugging");
-            let start_response = client
-                .call_tool(
-                    "start_debugging",
-                    Some(json!({
-                        "session_id": session_id,
-                        "timeout": 10
-                    })),
-                )
-                .await?;
-            info!("Start debugging response: {:?}", start_response);
-
-            // Get stack frames
-            info!("Getting stack frames");
-            let frames_response = client
-                .call_tool(
-                    "get_stack_frames",
-                    Some(json!({
-                        "session_id": session_id
-                    })),
-                )
-                .await?;
-            info!("Stack frames response: {:?}", frames_response);
-
-            // Close session
-            info!("Closing session");
-            let close_response = client
-                .call_tool(
-                    "close_session",
-                    Some(json!({
-                        "session_id": session_id
-                    })),
-                )
-                .await?;
-            info!("Close session response: {:?}", close_response);
+            Box::new(client)
         }
         TransportType::Sse => {
-            let client = sse_client.unwrap();
+            let url = format!("http://{}:{}", args.server_host, args.server_port);
+            let transport = ClientSseTransportBuilder::new(url).build();
+            let client = ClientBuilder::new(transport).build();
 
             // Connect to server
             client.open().await?;
 
-            // Initialize client
-            client
-                .initialize(
-                    Implementation {
-                        name: "gdb-client".to_string(),
-                        version: "1.0".to_string(),
-                    },
-                    ClientCapabilities::default(),
-                )
-                .await?;
-
-            // Create GDB session
-            let session_response = client
-                .call_tool(
-                    "create_session",
-                    executable_clone1.map(|path| json!({ "executable_path": path })),
-                )
-                .await?;
-
-            info!("Session creation response: {:?}", session_response);
-
-            // Extract session ID from response
-            let response_text = format!("{:?}", session_response);
-            let session_id = response_text
-                .split(": ")
-                .nth(1)
-                .and_then(|s| s.split('"').next())
-                .ok_or_else(|| anyhow::anyhow!("Unable to parse session ID"))?
-                .to_string();
-
-            info!("Session ID: {}", session_id);
-
-            // Set breakpoint
-            if let Some(executable) = &executable_clone2 {
-                info!("Setting breakpoint at test_app.rs:5");
-                let breakpoint_response = client
-                    .call_tool(
-                        "set_breakpoint",
-                        Some(json!({
-                            "session_id": session_id,
-                            "file": "test_app.rs",
-                            "line": 5
-                        })),
-                    )
-                    .await?;
-                info!("Breakpoint response: {:?}", breakpoint_response);
-            }
-
-            // Start debugging
-            info!("Starting debugging");
-            let start_response = client
-                .call_tool(
-                    "start_debugging",
-                    Some(json!({
-                        "session_id": session_id,
-                        "timeout": 10
-                    })),
-                )
-                .await?;
-            info!("Start debugging response: {:?}", start_response);
-
-            // Get stack frames
-            info!("Getting stack frames");
-            let frames_response = client
-                .call_tool(
-                    "get_stack_frames",
-                    Some(json!({
-                        "session_id": session_id
-                    })),
-                )
-                .await?;
-            info!("Stack frames response: {:?}", frames_response);
-
-            // Close session
-            info!("Closing session");
-            let close_response = client
-                .call_tool(
-                    "close_session",
-                    Some(json!({
-                        "session_id": session_id
-                    })),
-                )
-                .await?;
-            info!("Close session response: {:?}", close_response);
+            Box::new(client)
         }
+    };
+
+    // Create GDB session
+    let session_response = call_tool(
+        &client,
+        "create_session",
+        args.executable.map(|path| json!({ "executable_path": path })),
+    )
+    .await?;
+
+    info!("Session creation response: {:?}", session_response);
+
+    // Extract session ID from response
+    let content = session_response.first().unwrap();
+    let session_id;
+    if let ToolResponseContent::Text { text } = content {
+        session_id = text.split_once(": ").unwrap().1.split('"').next().unwrap();
+    } else {
+        bail!("Unable to parse session ID");
     }
+
+    info!("Session ID: {}", session_id);
+
+    // Set breakpoint
+    let breakpoint_response = call_tool(
+        &client,
+        "set_breakpoint",
+        Some(json!({
+            "session_id": session_id,
+            "file": "test_app.rs",
+            "line": 5
+        })),
+    )
+    .await?;
+    info!("Breakpoint response: {:?}", breakpoint_response);
+
+    // Start debugging
+    let start_response = call_tool(
+        &client,
+        "start_debugging",
+        Some(json!({
+            "session_id": session_id,
+            "timeout": 10
+        })),
+    )
+    .await?;
+    info!("Start debugging response: {:?}", start_response);
+
+    // Get stack frames
+    let frames_response = call_tool(
+        &client,
+        "get_stack_frames",
+        Some(json!({
+            "session_id": session_id
+        })),
+    )
+    .await?;
+    info!("Stack frames response: {:?}", frames_response);
+
+    // Close session
+    let close_response = call_tool(
+        &client,
+        "close_session",
+        Some(json!({
+            "session_id": session_id
+        })),
+    )
+    .await?;
+    info!("Close session response: {:?}", close_response);
 
     Ok(())
 }
