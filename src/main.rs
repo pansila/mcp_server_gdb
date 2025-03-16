@@ -61,13 +61,14 @@ async fn main() -> Result<()> {
     // Initialize GDB manager
     tools::init_gdb_manager();
 
-    let server_protocol = Server::builder("mcp-gdb".to_string(), "1.0".to_string())
-        .capabilities(ServerCapabilities {
+    let server_protocol = Server::builder("mcp-gdb".to_string(), "1.0".to_string()).capabilities(
+        ServerCapabilities {
             tools: Some(json!({
                 "listChanged": false,
             })),
             ..Default::default()
-        });
+        },
+    );
 
     let server_protocol = register_tools(server_protocol).build();
 
@@ -94,10 +95,7 @@ fn register_tools(builder: ServerProtocolBuilder) -> ServerProtocolBuilder {
             tools::CreateSessionTool::tool(),
             tools::CreateSessionTool::call(),
         )
-        .register_tool(
-            tools::GetSessionTool::tool(),
-            tools::GetSessionTool::call(),
-        )
+        .register_tool(tools::GetSessionTool::tool(), tools::GetSessionTool::call())
         .register_tool(
             tools::GetAllSessionsTool::tool(),
             tools::GetAllSessionsTool::call(),
