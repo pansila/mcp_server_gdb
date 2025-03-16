@@ -1,4 +1,5 @@
 use regex::Regex;
+use tracing::debug;
 use std::{
     collections::HashMap,
     process::Stdio,
@@ -55,6 +56,8 @@ impl GDBManager {
         if let Some(path) = &executable_path {
             command.arg(path);
         }
+
+        debug!("Starting GDB process with command: {:?}", command);
 
         command
             .stdin(Stdio::piped())

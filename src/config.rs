@@ -1,3 +1,4 @@
+#[derive(Debug)]
 /// Server Configuration
 pub struct Config {
     /// Server port

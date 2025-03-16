@@ -7,12 +7,12 @@ mod tools;
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use mcp_core::{
-    server::Server,
+    server::{Server, ServerProtocolBuilder},
     transport::{ServerSseTransport, ServerStdioTransport},
     types::ServerCapabilities,
 };
 use serde_json::json;
-use tracing::info;
+use tracing::{debug, info};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -54,6 +54,7 @@ async fn main() -> Result<()> {
 
     // Get configuration
     let config = config::Config::default();
+    debug!("GDB path: {:?}", config);
 
     info!("Starting MCP GDB Server on port {}", config.server_port);
 
@@ -66,7 +67,29 @@ async fn main() -> Result<()> {
                 "listChanged": false,
             })),
             ..Default::default()
-        })
+        });
+
+    let server_protocol = register_tools(server_protocol).build();
+
+    match args.transport {
+        TransportType::Stdio => {
+            let transport = ServerStdioTransport::new(server_protocol);
+            Server::start(transport).await
+        }
+        TransportType::Sse => {
+            let transport = ServerSseTransport::new(
+                "127.0.0.1".to_string(),
+                config.server_port,
+                server_protocol,
+            );
+            Server::start(transport).await
+        }
+    }
+}
+
+/// Register all debugging tools to the server
+fn register_tools(builder: ServerProtocolBuilder) -> ServerProtocolBuilder {
+    builder
         .register_tool(
             tools::CreateSessionTool::tool(),
             tools::CreateSessionTool::call(),
@@ -123,20 +146,4 @@ async fn main() -> Result<()> {
             tools::NextExecutionTool::tool(),
             tools::NextExecutionTool::call(),
         )
-        .build();
-
-    match args.transport {
-        TransportType::Stdio => {
-            let transport = ServerStdioTransport::new(server_protocol);
-            Server::start(transport).await
-        }
-        TransportType::Sse => {
-            let transport = ServerSseTransport::new(
-                "127.0.0.1".to_string(),
-                config.server_port,
-                server_protocol,
-            );
-            Server::start(transport).await
-        }
-    }
 }
