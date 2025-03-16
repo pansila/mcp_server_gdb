@@ -19,7 +19,7 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum, Debug)]
 enum TransportType {
     Stdio,
-    SSE,
+    Sse,
 }
 
 #[derive(Parser, Debug)]
@@ -72,6 +72,18 @@ async fn main() -> Result<()> {
             tools::CreateSessionTool::call(),
         )
         .register_tool(
+            tools::GetSessionTool::tool(),
+            tools::GetSessionTool::call(),
+        )
+        .register_tool(
+            tools::GetAllSessionsTool::tool(),
+            tools::GetAllSessionsTool::call(),
+        )
+        .register_tool(
+            tools::CloseSessionTool::tool(),
+            tools::CloseSessionTool::call(),
+        )
+        .register_tool(
             tools::StartDebuggingTool::tool(),
             tools::StartDebuggingTool::call(),
         )
@@ -80,8 +92,24 @@ async fn main() -> Result<()> {
             tools::StopDebuggingTool::call(),
         )
         .register_tool(
+            tools::GetBreakpointsTool::tool(),
+            tools::GetBreakpointsTool::call(),
+        )
+        .register_tool(
             tools::SetBreakpointTool::tool(),
             tools::SetBreakpointTool::call(),
+        )
+        .register_tool(
+            tools::DeleteBreakpointTool::tool(),
+            tools::DeleteBreakpointTool::call(),
+        )
+        .register_tool(
+            tools::GetStackFramesTool::tool(),
+            tools::GetStackFramesTool::call(),
+        )
+        .register_tool(
+            tools::GetLocalVariablesTool::tool(),
+            tools::GetLocalVariablesTool::call(),
         )
         .register_tool(
             tools::ContinueExecutionTool::tool(),
@@ -102,7 +130,7 @@ async fn main() -> Result<()> {
             let transport = ServerStdioTransport::new(server_protocol);
             Server::start(transport).await
         }
-        TransportType::SSE => {
+        TransportType::Sse => {
             let transport = ServerSseTransport::new(
                 "127.0.0.1".to_string(),
                 config.server_port,

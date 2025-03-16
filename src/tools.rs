@@ -24,6 +24,36 @@ pub async fn create_session_tool(executable_path: Option<String>) -> Result<Tool
 }
 
 #[tool(
+    name = "get_session",
+    description = "Get a GDB debugging session by ID",
+    params(session_id = "The ID of the GDB session")
+)]
+pub async fn get_session_tool(session_id: String) -> Result<ToolResponseContent> {
+    let session = GDB_MANAGER.get_session(&session_id).await?;
+    Ok(tool_text_content!(format!("Session: {:?}", session)))
+}
+
+#[tool(
+    name = "get_all_sessions",
+    description = "Get all GDB debugging sessions",
+    params()
+)]
+pub async fn get_all_sessions_tool() -> Result<ToolResponseContent> {
+    let sessions = GDB_MANAGER.get_all_sessions().await?;
+    Ok(tool_text_content!(format!("Sessions: {:?}", sessions)))
+}
+
+#[tool(
+    name = "close_session",
+    description = "Close a GDB debugging session",
+    params(session_id = "The ID of the GDB session")
+)]
+pub async fn close_session_tool(session_id: String) -> Result<ToolResponseContent> {
+    GDB_MANAGER.close_session(&session_id).await?;
+    Ok(tool_text_content!("Closed GDB session".to_string()))
+}
+
+#[tool(
     name = "start_debugging",
     description = "Start debugging in a session",
     params(session_id = "The ID of the GDB session")
@@ -41,6 +71,16 @@ pub async fn start_debugging_tool(session_id: String) -> Result<ToolResponseCont
 pub async fn stop_debugging_tool(session_id: String) -> Result<ToolResponseContent> {
     GDB_MANAGER.stop_debugging(&session_id).await?;
     Ok(tool_text_content!("Stopped debugging".to_string()))
+}
+
+#[tool(
+    name = "get_breakpoints",
+    description = "Get all breakpoints in the current GDB session",
+    params(session_id = "The ID of the GDB session")
+)]
+pub async fn get_breakpoints_tool(session_id: String) -> Result<ToolResponseContent> {
+    let breakpoints = GDB_MANAGER.get_breakpoints(&session_id).await?;
+    Ok(tool_text_content!(format!("Breakpoints: {:?}", breakpoints)))
 }
 
 #[tool(
@@ -62,6 +102,42 @@ pub async fn set_breakpoint_tool(
         "Set breakpoint: {:?}",
         breakpoint
     )))
+}
+
+#[tool(
+    name = "delete_breakpoint",
+    description = "Delete a breakpoint in the code",
+    params(session_id = "The ID of the GDB session", breakpoint_id = "The ID of the breakpoint")
+)]
+pub async fn delete_breakpoint_tool(
+    session_id: String,
+    breakpoint_id: String,
+) -> Result<ToolResponseContent> {
+    GDB_MANAGER.delete_breakpoint(&session_id, &breakpoint_id).await?;
+    Ok(tool_text_content!("Deleted breakpoint".to_string()))
+}
+
+#[tool(
+    name = "get_stack_frames",
+    description = "Get stack frames in the current GDB session",
+    params(session_id = "The ID of the GDB session")
+)]
+pub async fn get_stack_frames_tool(session_id: String) -> Result<ToolResponseContent> {
+    let frames = GDB_MANAGER.get_stack_frames(&session_id).await?;
+    Ok(tool_text_content!(format!("Stack frames: {:?}", frames)))
+}
+
+#[tool(
+    name = "get_local_variables",
+    description = "Get local variables in the current stack frame",
+    params(session_id = "The ID of the GDB session", frame_id = "The ID of the stack frame")
+)]
+pub async fn get_local_variables_tool(
+    session_id: String,
+    frame_id: u32,
+) -> Result<ToolResponseContent> {
+    let variables = GDB_MANAGER.get_local_variables(&session_id, frame_id).await?;
+    Ok(tool_text_content!(format!("Local variables: {:?}", variables)))
 }
 
 #[tool(
