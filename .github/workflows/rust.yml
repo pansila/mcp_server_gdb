@@ -10,13 +10,20 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  build_and_test:
 
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+    - name: Set Up Dependencies
+      run: sudo apt-get install -y gdb
     - name: Build
-      run: cargo build --verbose
+      run: cargo build
     - name: Run tests
       run: cargo test --verbose
+    - name: Run Client and Server tests
+      run: |
+        export GDB_COMMAND_TIMEOUT=3
+        cargo build --bin test_app
+        cargo run --bin gdb_client -- --log-level debug -e target/debug/test_app

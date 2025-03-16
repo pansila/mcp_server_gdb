@@ -20,7 +20,7 @@ impl Default for Config {
             command_timeout: std::env::var("GDB_COMMAND_TIMEOUT")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(30),
+                .unwrap_or(10),
         }
     }
 }

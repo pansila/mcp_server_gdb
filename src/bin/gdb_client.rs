@@ -6,7 +6,7 @@ use mcp_core::{
     types::{ClientCapabilities, Implementation, ToolResponseContent},
 };
 use serde_json::json;
-use tracing::info;
+use tracing::{debug, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum, Debug)]
@@ -64,6 +64,8 @@ async fn main() -> Result<()> {
         None
     };
 
+    debug!("stdio_client created: {}", stdio_client.is_some());
+
     let sse_client = if args.transport == TransportType::Sse {
         let url = format!("http://{}:{}", args.server_host, args.server_port);
         let transport = ClientSseTransportBuilder::new(url).build();
@@ -71,6 +73,8 @@ async fn main() -> Result<()> {
     } else {
         None
     };
+
+    debug!("SSE client created: {}", sse_client.is_some());
 
     // Clone executable in advance to avoid move issues
     let executable_clone1 = args.executable.clone();

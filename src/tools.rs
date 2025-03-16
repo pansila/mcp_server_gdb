@@ -190,49 +190,10 @@ pub async fn next_execution_tool(session_id: String) -> Result<ToolResponseConte
 mod tests {
     use super::*;
     use anyhow::Result;
-    use clap::{Parser, ValueEnum};
-    use mcp_core::{
-        client::ClientBuilder,
-        protocol::RequestOptions,
-        transport::{ClientSseTransportBuilder, ClientStdioTransport},
-        types::{ClientCapabilities, Implementation},
-    };
-    use serde_json::json;
-    use std::time::Duration;
-
-    #[tokio::test]
-    async fn test_echo_client() -> Result<()> {
-        let transport = ClientStdioTransport::new("./target/debug/echo_server", &[])?;
-        let client = ClientBuilder::new(transport.clone()).build();
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        client.open().await?;
-
-        client
-            .initialize(
-                Implementation {
-                    name: "echo".to_string(),
-                    version: "1.0".to_string(),
-                },
-                ClientCapabilities::default(),
-            )
-            .await?;
-
-        client
-            .call_tool(
-                "echo",
-                Some(json!({
-                    "message": "Hello, world!"
-                })),
-            )
-            .await?;
-
-        Ok(())
-    }
 
     #[tokio::test]
     async fn test_create_session_tool() -> Result<()> {
         let response = create_session_tool(None).await?;
-        // 只检查是否成功返回，不检查具体内容
         assert!(format!("{:?}", response).contains("Created GDB session"));
         Ok(())
     }

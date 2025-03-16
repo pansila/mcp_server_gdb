@@ -121,7 +121,7 @@ impl GDBManager {
 
         if let Some(handle) = sessions.remove(session_id) {
             // Use timeout when sending exit command
-            let command_timeout = self.config.command_timeout.unwrap_or(30); // Default 30 seconds timeout
+            let command_timeout = self.config.command_timeout;
             let _ = match tokio::time::timeout(
                 Duration::from_secs(command_timeout),
                 self.send_raw_command(&handle, "-gdb-exit"),
