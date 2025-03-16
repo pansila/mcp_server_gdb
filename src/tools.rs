@@ -80,7 +80,10 @@ pub async fn stop_debugging_tool(session_id: String) -> Result<ToolResponseConte
 )]
 pub async fn get_breakpoints_tool(session_id: String) -> Result<ToolResponseContent> {
     let breakpoints = GDB_MANAGER.get_breakpoints(&session_id).await?;
-    Ok(tool_text_content!(format!("Breakpoints: {:?}", breakpoints)))
+    Ok(tool_text_content!(format!(
+        "Breakpoints: {:?}",
+        breakpoints
+    )))
 }
 
 #[tool(
@@ -107,13 +110,18 @@ pub async fn set_breakpoint_tool(
 #[tool(
     name = "delete_breakpoint",
     description = "Delete a breakpoint in the code",
-    params(session_id = "The ID of the GDB session", breakpoint_id = "The ID of the breakpoint")
+    params(
+        session_id = "The ID of the GDB session",
+        breakpoint_id = "The ID of the breakpoint"
+    )
 )]
 pub async fn delete_breakpoint_tool(
     session_id: String,
     breakpoint_id: String,
 ) -> Result<ToolResponseContent> {
-    GDB_MANAGER.delete_breakpoint(&session_id, &breakpoint_id).await?;
+    GDB_MANAGER
+        .delete_breakpoint(&session_id, &breakpoint_id)
+        .await?;
     Ok(tool_text_content!("Deleted breakpoint".to_string()))
 }
 
@@ -130,14 +138,22 @@ pub async fn get_stack_frames_tool(session_id: String) -> Result<ToolResponseCon
 #[tool(
     name = "get_local_variables",
     description = "Get local variables in the current stack frame",
-    params(session_id = "The ID of the GDB session", frame_id = "The ID of the stack frame")
+    params(
+        session_id = "The ID of the GDB session",
+        frame_id = "The ID of the stack frame"
+    )
 )]
 pub async fn get_local_variables_tool(
     session_id: String,
     frame_id: u32,
 ) -> Result<ToolResponseContent> {
-    let variables = GDB_MANAGER.get_local_variables(&session_id, frame_id).await?;
-    Ok(tool_text_content!(format!("Local variables: {:?}", variables)))
+    let variables = GDB_MANAGER
+        .get_local_variables(&session_id, frame_id)
+        .await?;
+    Ok(tool_text_content!(format!(
+        "Local variables: {:?}",
+        variables
+    )))
 }
 
 #[tool(
@@ -168,4 +184,56 @@ pub async fn step_execution_tool(session_id: String) -> Result<ToolResponseConte
 pub async fn next_execution_tool(session_id: String) -> Result<ToolResponseContent> {
     GDB_MANAGER.next_execution(&session_id).await?;
     Ok(tool_text_content!("Stepped over next line".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use clap::{Parser, ValueEnum};
+    use mcp_core::{
+        client::ClientBuilder,
+        protocol::RequestOptions,
+        transport::{ClientSseTransportBuilder, ClientStdioTransport},
+        types::{ClientCapabilities, Implementation},
+    };
+    use serde_json::json;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn test_echo_client() -> Result<()> {
+        let transport = ClientStdioTransport::new("./target/debug/echo_server", &[])?;
+        let client = ClientBuilder::new(transport.clone()).build();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        client.open().await?;
+
+        client
+            .initialize(
+                Implementation {
+                    name: "echo".to_string(),
+                    version: "1.0".to_string(),
+                },
+                ClientCapabilities::default(),
+            )
+            .await?;
+
+        client
+            .call_tool(
+                "echo",
+                Some(json!({
+                    "message": "Hello, world!"
+                })),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_create_session_tool() -> Result<()> {
+        let response = create_session_tool(None).await?;
+        // 只检查是否成功返回，不检查具体内容
+        assert!(format!("{:?}", response).contains("Created GDB session"));
+        Ok(())
+    }
 }

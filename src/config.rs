@@ -5,8 +5,8 @@ pub struct Config {
     pub server_port: u16,
     /// GDB path
     pub gdb_path: String,
-    /// Temporary file directory
-    pub temp_dir: String,
+    /// GDB command execution timeout in seconds
+    pub command_timeout: u64,
 }
 
 impl Default for Config {
@@ -17,7 +17,10 @@ impl Default for Config {
                 .parse()
                 .expect("Invalid server port"),
             gdb_path: std::env::var("GDB_PATH").unwrap_or_else(|_| "gdb".to_string()),
-            temp_dir: std::env::temp_dir().to_string_lossy().to_string(),
+            command_timeout: std::env::var("GDB_COMMAND_TIMEOUT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(30),
         }
     }
 }

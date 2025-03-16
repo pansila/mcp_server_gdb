@@ -2,6 +2,7 @@
 name = "mcp_server_gdb"
 version = "0.1.0"
 edition = "2024"
+default-run = "mcp_server_gdb"
 
 [dependencies]
 axum = "0.8"
@@ -25,3 +26,24 @@ dotenv = "0.15"
 mcp-core = { version = "0.1",  features = ["sse"] }
 mcp-core-macros = "0.1"
 schemars = "0.8"
+
+[[bin]]
+name = "mcp_server_gdb"
+path = "src/main.rs"
+
+[[bin]]
+name = "gdb_client"
+path = "src/bin/gdb_client.rs"
+
+[[bin]]
+name = "test_app"
+path = "src/bin/test_app.rs"
+
+[profile.release]
+strip = "debuginfo"
+lto = "fat"
+opt-level = "s"
+incremental = false
+codegen-units = 1
+debug-assertions = false
+overflow-checks = false
