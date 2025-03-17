@@ -1,6 +1,7 @@
 mod config;
 mod error;
 mod gdb;
+mod mi;
 mod models;
 mod tools;
 

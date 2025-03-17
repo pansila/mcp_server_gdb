@@ -1,10 +1,12 @@
+use std::path::PathBuf;
+
 #[derive(Debug)]
 /// Server Configuration
 pub struct Config {
     /// Server port
     pub server_port: u16,
     /// GDB path
-    pub gdb_path: String,
+    pub gdb_path: PathBuf,
     /// GDB command execution timeout in seconds
     pub command_timeout: u64,
 }

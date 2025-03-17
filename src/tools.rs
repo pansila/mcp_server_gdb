@@ -2,7 +2,11 @@ use crate::gdb::GDBManager;
 use anyhow::Result;
 use mcp_core::{tool_text_content, types::ToolResponseContent};
 use mcp_core_macros::tool;
-use std::sync::{Arc, LazyLock};
+use std::{
+    ffi::OsString,
+    path::PathBuf,
+    sync::{Arc, LazyLock},
+};
 
 static GDB_MANAGER: LazyLock<Arc<GDBManager>> = LazyLock::new(|| Arc::new(GDBManager::new()));
 
@@ -13,13 +17,57 @@ pub fn init_gdb_manager() {
 #[tool(
     name = "create_session",
     description = "Create a new GDB debugging session",
-    params(executable_path = "Optional path to the executable to debug")
+    params(
+        program = "if provided, path to the executable to debug",
+        nh = "if provided, do not read ~/.gdbinit file",
+        nx = "if provided, do not read any .gdbinit files in any directory",
+        quiet = "if provided, do not print version number on startup",
+        cd = "if provided, change current directory to DIR",
+        bps = "if provided, set serial port baud rate used for remote debugging",
+        symbol_file = "if provided, read symbols from SYMFILE",
+        core_file = "if provided, analyze the core dump COREFILE",
+        proc_id = "if provided, attach to running process PID",
+        command = "if provided, execute GDB commands from FILE",
+        source_dir = "if provided, search for source files in DIR",
+        args = "if provided, arguments to be passed to the inferior program",
+        tty = "if provided, use TTY for input/output by the program being debugged",
+    )
 )]
-pub async fn create_session_tool(executable_path: Option<String>) -> Result<ToolResponseContent> {
-    let session = GDB_MANAGER.create_session(executable_path).await?;
+pub async fn create_session_tool(
+    program: Option<PathBuf>,
+    nh: Option<bool>,
+    nx: Option<bool>,
+    quiet: Option<bool>,
+    cd: Option<PathBuf>,
+    bps: Option<u32>,
+    symbol_file: Option<PathBuf>,
+    core_file: Option<PathBuf>,
+    proc_id: Option<u32>,
+    command: Option<PathBuf>,
+    source_dir: Option<PathBuf>,
+    args: Option<Vec<OsString>>,
+    tty: Option<PathBuf>,
+) -> Result<ToolResponseContent> {
+    let session = GDB_MANAGER
+        .create_session(
+            program,
+            nh,
+            nx,
+            quiet,
+            cd,
+            bps,
+            symbol_file,
+            core_file,
+            proc_id,
+            command,
+            source_dir,
+            args,
+            tty,
+        )
+        .await?;
     Ok(tool_text_content!(format!(
         "Created GDB session: {}",
-        session.id
+        session
     )))
 }
 
@@ -173,7 +221,10 @@ pub async fn continue_execution_tool(session_id: String) -> Result<ToolResponseC
 )]
 pub async fn step_execution_tool(session_id: String) -> Result<ToolResponseContent> {
     let ret = GDB_MANAGER.step_execution(&session_id).await?;
-    Ok(tool_text_content!(format!("Stepped into next line: {}", ret)))
+    Ok(tool_text_content!(format!(
+        "Stepped into next line: {}",
+        ret
+    )))
 }
 
 #[tool(
@@ -183,7 +234,10 @@ pub async fn step_execution_tool(session_id: String) -> Result<ToolResponseConte
 )]
 pub async fn next_execution_tool(session_id: String) -> Result<ToolResponseContent> {
     let ret = GDB_MANAGER.next_execution(&session_id).await?;
-    Ok(tool_text_content!(format!("Stepped over next line: {}", ret)))
+    Ok(tool_text_content!(format!(
+        "Stepped over next line: {}",
+        ret
+    )))
 }
 
 #[cfg(test)]

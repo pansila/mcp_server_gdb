@@ -7,8 +7,6 @@ pub struct GDBSession {
     pub id: String,
     /// Session status
     pub status: GDBSessionStatus,
-    /// Path of the file being debugged
-    pub file_path: Option<String>,
     /// Creation time
     pub created_at: u64,
 }

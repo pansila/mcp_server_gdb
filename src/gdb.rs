@@ -1,6 +1,8 @@
 use regex::Regex;
 use std::{
     collections::HashMap,
+    ffi::OsString,
+    path::PathBuf,
     process::Stdio,
     sync::{Arc, LazyLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -13,11 +15,18 @@ use tokio::{
 use tracing::debug;
 use uuid::Uuid;
 
+use crate::mi::{
+    self, ExecuteError, GDB, GDBBuilder, OutOfBandRecordSink,
+    commands::{BreakPointLocation, BreakPointNumber, MiCommand},
+    output::{BreakPointEvent, ResultClass},
+};
 use crate::{
     config::Config,
     error::{AppError, AppResult},
     models::{Breakpoint, GDBSession, GDBSessionStatus, StackFrame, Variable},
 };
+use json::JsonValue;
+use json::object::Object;
 
 /// GDB Session Manager
 pub struct GDBManager {
@@ -32,7 +41,8 @@ struct GDBSessionHandle {
     /// Session information
     info: GDBSession,
     /// GDB process
-    process: Arc<Mutex<Child>>,
+    // process: Arc<Mutex<Child>>,
+    gdb: GDB,
 }
 
 impl GDBManager {
@@ -45,34 +55,78 @@ impl GDBManager {
     }
 
     /// Create a new GDB session
-    pub async fn create_session(&self, executable_path: Option<String>) -> AppResult<GDBSession> {
+    pub async fn create_session(
+        &self,
+        program: Option<PathBuf>,
+        nh: Option<bool>,
+        nx: Option<bool>,
+        quiet: Option<bool>,
+        cd: Option<PathBuf>,
+        bps: Option<u32>,
+        symbol_file: Option<PathBuf>,
+        core_file: Option<PathBuf>,
+        proc_id: Option<u32>,
+        command: Option<PathBuf>,
+        source_dir: Option<PathBuf>,
+        args: Option<Vec<OsString>>,
+        tty: Option<PathBuf>,
+    ) -> AppResult<String> {
         // Generate unique session ID
         let session_id = Uuid::new_v4().to_string();
 
-        // Start GDB process
-        let mut command = Command::new(&self.config.gdb_path);
-        command.arg("--interpreter=mi");
-
-        if let Some(path) = &executable_path {
-            command.arg(path);
+        let mut gdb_builder = GDBBuilder::new(self.config.gdb_path.clone());
+        if let Some(nh) = nh {
+            if nh {
+                gdb_builder = gdb_builder.nh();
+            }
+        }
+        if let Some(nx) = nx {
+            if nx {
+                gdb_builder = gdb_builder.nx();
+            }
+        }
+        if let Some(quiet) = quiet {
+            if quiet {
+                gdb_builder = gdb_builder.quiet();
+            }
+        }
+        if let Some(cd) = cd {
+            gdb_builder = gdb_builder.cd(cd);
+        }
+        if let Some(bps) = bps {
+            gdb_builder = gdb_builder.bps(bps);
+        }
+        if let Some(symbol_file) = symbol_file {
+            gdb_builder = gdb_builder.symbol_file(symbol_file);
+        }
+        if let Some(core_file) = core_file {
+            gdb_builder = gdb_builder.core_file(core_file);
+        }
+        if let Some(proc_id) = proc_id {
+            gdb_builder = gdb_builder.proc_id(proc_id);
+        }
+        if let Some(program) = program {
+            gdb_builder = gdb_builder.program(program);
+        }
+        if let Some(command) = command {
+            gdb_builder = gdb_builder.command_file(command);
+        }
+        if let Some(source_dir) = source_dir {
+            gdb_builder = gdb_builder.source_dir(source_dir);
+        }
+        if let Some(args) = args {
+            gdb_builder = gdb_builder.args(&args);
+        }
+        if let Some(tty) = tty {
+            gdb_builder = gdb_builder.tty(tty);
         }
 
-        debug!("Starting GDB process with command: {:?}", command);
-
-        command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        let process = command
-            .spawn()
-            .map_err(|e| AppError::GDBError(format!("Failed to start GDB process: {}", e)))?;
+        let gdb = gdb_builder.try_spawn(oob_sink).await?;
 
         // Create session information
         let session = GDBSession {
             id: session_id.clone(),
             status: GDBSessionStatus::Created,
-            file_path: executable_path,
             created_at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -80,10 +134,7 @@ impl GDBManager {
         };
 
         // Store session
-        let handle = GDBSessionHandle {
-            info: session.clone(),
-            process: Arc::new(Mutex::new(process)),
-        };
+        let handle = GDBSessionHandle { info: session, gdb };
 
         self.sessions
             .write()
@@ -93,7 +144,7 @@ impl GDBManager {
         // Send empty command to GDB to flush the welcome messages
         let _ = self.send_command(&session_id, "").await?;
 
-        Ok(session)
+        Ok(session_id)
     }
 
     /// Get all sessions
@@ -144,11 +195,7 @@ impl GDBManager {
     }
 
     /// Send GDB command
-    pub async fn send_command(
-        &self,
-        session_id: &str,
-        command: &str,
-    ) -> AppResult<String> {
+    pub async fn send_command(&self, session_id: &str, command: &str) -> AppResult<String> {
         let sessions = self.sessions.read().await;
         let handle = sessions
             .get(session_id)
@@ -254,9 +301,7 @@ impl GDBManager {
         )
         .await
         {
-            Ok(Ok(result)) => {
-                Ok(result)
-            }
+            Ok(Ok(result)) => Ok(result),
             Ok(Err(e)) => Err(e),
             Err(_) => Err(AppError::GDBTimeout),
         }
