@@ -9,6 +9,12 @@ pub enum AppError {
     #[error("GDB timeout")]
     GDBTimeout,
 
+    #[error("GDB busy")]
+    GDBBusy,
+
+    #[error("GDB quit")]
+    GDBQuit,
+
     #[error("Parse error: {0}")]
     #[allow(dead_code)]
     ParseError(String),
@@ -18,6 +24,9 @@ pub enum AppError {
 
     #[error("Resource not found: {0}")]
     NotFound(String),
+
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 /// Application result type

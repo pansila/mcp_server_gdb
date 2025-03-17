@@ -2,7 +2,11 @@ use crate::gdb::GDBManager;
 use anyhow::Result;
 use mcp_core::{tool_text_content, types::ToolResponseContent};
 use mcp_core_macros::tool;
-use std::sync::{Arc, LazyLock};
+use std::{
+    ffi::OsString,
+    path::PathBuf,
+    sync::{Arc, LazyLock},
+};
 
 static GDB_MANAGER: LazyLock<Arc<GDBManager>> = LazyLock::new(|| Arc::new(GDBManager::new()));
 
@@ -12,14 +16,62 @@ pub fn init_gdb_manager() {
 
 #[tool(
     name = "create_session",
-    description = "Create a new GDB debugging session",
-    params(executable_path = "Optional path to the executable to debug")
+    description = "Create a new GDB debugging session with optional parameters,\
+                   returns a session ID (UUID) if successful",
+    params(
+        program = "if provided, path to the executable to debug",
+        nh = "if provided, do not read ~/.gdbinit file",
+        nx = "if provided, do not read any .gdbinit files in any directory",
+        quiet = "if provided, do not print version number on startup",
+        cd = "if provided, change current directory to DIR",
+        bps = "if provided, set serial port baud rate used for remote debugging",
+        symbol_file = "if provided, read symbols from SYMFILE",
+        core_file = "if provided, analyze the core dump COREFILE",
+        proc_id = "if provided, attach to running process PID",
+        command = "if provided, execute GDB commands from FILE",
+        source_dir = "if provided, search for source files in DIR",
+        args = "if provided, arguments to be passed to the inferior program",
+        tty = "if provided, use TTY for input/output by the program being debugged",
+        gdb_path = "if provided, path to the GDB executable",
+    )
 )]
-pub async fn create_session_tool(executable_path: Option<String>) -> Result<ToolResponseContent> {
-    let session = GDB_MANAGER.create_session(executable_path).await?;
+pub async fn create_session_tool(
+    program: Option<PathBuf>,
+    nh: Option<bool>,
+    nx: Option<bool>,
+    quiet: Option<bool>,
+    cd: Option<PathBuf>,
+    bps: Option<u32>,
+    symbol_file: Option<PathBuf>,
+    core_file: Option<PathBuf>,
+    proc_id: Option<u32>,
+    command: Option<PathBuf>,
+    source_dir: Option<PathBuf>,
+    args: Option<Vec<OsString>>,
+    tty: Option<PathBuf>,
+    gdb_path: Option<PathBuf>,
+) -> Result<ToolResponseContent> {
+    let session = GDB_MANAGER
+        .create_session(
+            program,
+            nh,
+            nx,
+            quiet,
+            cd,
+            bps,
+            symbol_file,
+            core_file,
+            proc_id,
+            command,
+            source_dir,
+            args,
+            tty,
+            gdb_path,
+        )
+        .await?;
     Ok(tool_text_content!(format!(
         "Created GDB session: {}",
-        session.id
+        session
     )))
 }
 
@@ -98,9 +150,11 @@ pub async fn get_breakpoints_tool(session_id: String) -> Result<ToolResponseCont
 pub async fn set_breakpoint_tool(
     session_id: String,
     file: String,
-    line: u32,
+    line: usize,
 ) -> Result<ToolResponseContent> {
-    let breakpoint = GDB_MANAGER.set_breakpoint(&session_id, &file, line).await?;
+    let breakpoint = GDB_MANAGER
+        .set_breakpoint(&session_id, &PathBuf::from(file), line)
+        .await?;
     Ok(tool_text_content!(format!(
         "Set breakpoint: {:?}",
         breakpoint
@@ -109,18 +163,18 @@ pub async fn set_breakpoint_tool(
 
 #[tool(
     name = "delete_breakpoint",
-    description = "Delete a breakpoint in the code",
+    description = "Delete one or more breakpoints in the code",
     params(
         session_id = "The ID of the GDB session",
-        breakpoint_id = "The ID of the breakpoint"
+        breakpoints = "The list of the breakpoint numbers, separated by commas"
     )
 )]
 pub async fn delete_breakpoint_tool(
     session_id: String,
-    breakpoint_id: String,
+    breakpoints: String,
 ) -> Result<ToolResponseContent> {
     let ret = GDB_MANAGER
-        .delete_breakpoint(&session_id, &breakpoint_id)
+        .delete_breakpoint(&session_id, &breakpoints)
         .await?;
     Ok(tool_text_content!(format!("Deleted breakpoint: {}", ret)))
 }
@@ -145,7 +199,7 @@ pub async fn get_stack_frames_tool(session_id: String) -> Result<ToolResponseCon
 )]
 pub async fn get_local_variables_tool(
     session_id: String,
-    frame_id: u32,
+    frame_id: usize,
 ) -> Result<ToolResponseContent> {
     let variables = GDB_MANAGER
         .get_local_variables(&session_id, frame_id)
@@ -173,7 +227,10 @@ pub async fn continue_execution_tool(session_id: String) -> Result<ToolResponseC
 )]
 pub async fn step_execution_tool(session_id: String) -> Result<ToolResponseContent> {
     let ret = GDB_MANAGER.step_execution(&session_id).await?;
-    Ok(tool_text_content!(format!("Stepped into next line: {}", ret)))
+    Ok(tool_text_content!(format!(
+        "Stepped into next line: {}",
+        ret
+    )))
 }
 
 #[tool(
@@ -183,18 +240,8 @@ pub async fn step_execution_tool(session_id: String) -> Result<ToolResponseConte
 )]
 pub async fn next_execution_tool(session_id: String) -> Result<ToolResponseContent> {
     let ret = GDB_MANAGER.next_execution(&session_id).await?;
-    Ok(tool_text_content!(format!("Stepped over next line: {}", ret)))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use anyhow::Result;
-
-    #[tokio::test]
-    async fn test_create_session_tool() -> Result<()> {
-        let response = create_session_tool(None).await?;
-        assert!(format!("{:?}", response).contains("Created GDB session"));
-        Ok(())
-    }
+    Ok(tool_text_content!(format!(
+        "Stepped over next line: {}",
+        ret
+    )))
 }

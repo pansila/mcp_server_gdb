@@ -20,6 +20,11 @@ dotenv = "0.15"
 mcp-core = { version = "0.1",  features = ["sse"] }
 mcp-core-macros = "0.1"
 schemars = "0.8"
+nom = "8.0"
+json = "0.12"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29.0", features = ["process", "signal"] }
 
 [[bin]]
 name = "mcp_server_gdb"
