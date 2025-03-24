@@ -1,5 +1,3 @@
-use super::Token;
-
 // use std::io::{BufRead, BufReader, Read};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -69,7 +67,7 @@ pub enum StreamKind {
 
 #[derive(Debug, Clone)]
 pub struct ResultRecord {
-    pub(crate) token: Option<Token>,
+    pub(crate) token: Option<u64>,
     pub class: ResultClass,
     pub results: Object,
 }
@@ -77,7 +75,7 @@ pub struct ResultRecord {
 #[derive(Debug, Clone)]
 pub enum OutOfBandRecord {
     AsyncRecord {
-        token: Option<Token>,
+        token: Option<u64>,
         kind: AsyncKind,
         class: AsyncClass,
         results: Object,
@@ -340,7 +338,7 @@ fn result(input: &str) -> IResult<&str, (String, JsonValue)> {
     .parse(input)
 }
 
-fn token(input: &str) -> IResult<&str, Token> {
+fn token(input: &str) -> IResult<&str, u64> {
     map(digit1, |values: &str| values.parse::<u64>().unwrap()).parse(input)
 }
 

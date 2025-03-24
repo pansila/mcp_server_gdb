@@ -1,20 +1,22 @@
+use serde_json::json;
 use std::{
     collections::HashMap,
     ffi::OsString,
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::mpsc;
 use tokio::{io::AsyncWriteExt, sync::Mutex};
+use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{debug, warn};
 use uuid::Uuid;
 
 use crate::mi::{
     self, ExecuteError, GDB, GDBBuilder,
     commands::{BreakPointLocation, BreakPointNumber, MiCommand},
-    output::{BreakPointEvent, ResultClass, ResultRecord},
+    output::{BreakPointEvent, OutOfBandRecord, ResultClass, ResultRecord},
 };
 use crate::{
+    TRANSPORT,
     config::Config,
     error::{AppError, AppResult},
     models::{Breakpoint, GDBSession, GDBSessionStatus, StackFrame, Variable},
@@ -34,6 +36,8 @@ struct GDBSessionHandle {
     info: GDBSession,
     /// GDB instance
     gdb: GDB,
+    /// OOB handle
+    oob_handle: JoinHandle<()>,
 }
 
 impl GDBManager {
@@ -84,8 +88,36 @@ impl GDBManager {
         };
 
         // TODO: connect it to MCP notification
-        let (oob_src, oob_sink) = mpsc::channel(100);
+        let (oob_src, mut oob_sink) = mpsc::channel(100);
         let gdb = gdb_builder.try_spawn(oob_src)?;
+
+        let oob_handle = tokio::spawn(async move {
+            loop {
+                if let Some(OutOfBandRecord::AsyncRecord {
+                    token,
+                    kind,
+                    class,
+                    results,
+                }) = oob_sink.recv().await
+                {
+                    let transport = TRANSPORT.lock().await;
+                    if let Some(transport) = transport.as_ref() {
+                        if let Err(e) = transport
+                            .send_notification("create_session", Some(json!(results.dump())))
+                            .await
+                        {
+                            tracing::error!(
+                                "Failed to send ping to session {}: {:?}",
+                                results.dump(),
+                                e
+                            );
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+        });
 
         // Create session information
         let session = GDBSession {
@@ -98,7 +130,11 @@ impl GDBManager {
         };
 
         // Store session
-        let handle = GDBSessionHandle { info: session, gdb };
+        let handle = GDBSessionHandle {
+            info: session,
+            gdb,
+            oob_handle,
+        };
 
         self.sessions
             .lock()
@@ -147,6 +183,7 @@ impl GDBManager {
                 }
             };
 
+            handle.oob_handle.abort();
             // Terminate process
             let mut process = handle.gdb.process.lock().await;
             let _ = process.kill().await; // Ignore possible errors, process may have already terminated

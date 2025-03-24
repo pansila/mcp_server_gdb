@@ -5,7 +5,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use anyhow::Result;
 use tokio::io::BufReader;
@@ -17,14 +17,12 @@ use tracing::{debug, info};
 use crate::error::{AppError, AppResult};
 use output::process_output;
 
-type Token = u64;
-
 #[allow(clippy::upper_case_acronyms)]
 pub struct GDB {
     pub process: Arc<Mutex<Child>>,
     is_running: Arc<AtomicBool>,
     result_output: mpsc::Receiver<output::ResultRecord>,
-    current_command_token: Token,
+    current_command_token: AtomicU64,
     binary_path: PathBuf,
     init_options: Vec<OsString>,
 }
@@ -177,7 +175,7 @@ impl GDBBuilder {
         let gdb = GDB {
             process: Arc::new(Mutex::new(child)),
             is_running,
-            current_command_token: 0,
+            current_command_token: AtomicU64::new(0),
             binary_path: self.gdb_path,
             init_options,
             result_output,
@@ -214,9 +212,8 @@ impl GDB {
         self.is_running.load(Ordering::SeqCst)
     }
 
-    pub fn new_token(&mut self) -> Token {
-        self.current_command_token = self.current_command_token.wrapping_add(1);
-        self.current_command_token
+    pub fn new_token(&mut self) -> u64 {
+        self.current_command_token.fetch_add(1, Ordering::SeqCst)
     }
 
     pub async fn execute<C: std::borrow::Borrow<commands::MiCommand>>(

@@ -5,14 +5,17 @@ mod mi;
 mod models;
 mod tools;
 
+use std::sync::{Arc, LazyLock};
+
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use mcp_core::{
     server::{Server, ServerProtocolBuilder},
-    transport::{ServerSseTransport, ServerStdioTransport},
+    transport::{ServerSseTransport, ServerStdioTransport, Transport},
     types::ServerCapabilities,
 };
 use serde_json::json;
+use tokio::sync::Mutex;
 use tracing::{debug, info};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -22,6 +25,9 @@ enum TransportType {
     Stdio,
     Sse,
 }
+
+pub static TRANSPORT: LazyLock<Mutex<Option<Arc<Box<dyn Transport>>>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -59,32 +65,36 @@ async fn main() -> Result<()> {
 
     info!("Starting MCP GDB Server on port {}", config.server_port);
 
-    // Initialize GDB manager
     tools::init_gdb_manager();
 
-    let server_protocol = Server::builder("mcp-gdb".to_string(), "1.0".to_string()).capabilities(
-        ServerCapabilities {
+    let server_protocol = Server::builder("MCP Server GDB".to_string(), "0.1.0".to_string())
+        .capabilities(ServerCapabilities {
             tools: Some(json!({
                 "listChanged": false,
             })),
             ..Default::default()
-        },
-    );
+        });
 
     let server_protocol = register_tools(server_protocol).build();
 
     match args.transport {
         TransportType::Stdio => {
-            let transport = ServerStdioTransport::new(server_protocol);
-            Server::start(transport).await
+            let transport = Arc::new(
+                Box::new(ServerStdioTransport::new(server_protocol)) as Box<dyn Transport>
+            );
+            let mut transport_guard = TRANSPORT.lock().await;
+            *transport_guard = Some(transport.clone());
+            transport.open().await
         }
         TransportType::Sse => {
-            let transport = ServerSseTransport::new(
+            let transport = Arc::new(Box::new(ServerSseTransport::new(
                 "127.0.0.1".to_string(),
                 config.server_port,
                 server_protocol,
-            );
-            Server::start(transport).await
+            )) as Box<dyn Transport>);
+            let mut transport_guard = TRANSPORT.lock().await;
+            *transport_guard = Some(transport.clone());
+            transport.open().await
         }
     }
 }
