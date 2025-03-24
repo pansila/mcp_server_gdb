@@ -91,7 +91,7 @@ impl MiCommand {
     pub async fn write_interpreter_string<S: AsyncWriteExt + Unpin>(
         &self,
         sink: &mut S,
-        token: super::Token,
+        token: u64,
     ) -> Result<(), Error> {
         // use std::os::unix::ffi::OsStrExt;
         let mut command = OsString::new();

@@ -117,8 +117,7 @@ async fn main() -> Result<()> {
     let session_response = call_tool(
         &client,
         "create_session",
-        args.executable
-            .map(|path| json!({ "executable_path": path })),
+        args.executable.map(|path| json!({ "program": path })),
     )
     .await?;
 
