@@ -278,6 +278,14 @@ impl GDB {
 
     pub async fn is_session_active(&mut self) -> AppResult<bool> {
         let res = self.execute(commands::MiCommand::thread_info(None)).await?;
-        Ok(!res.results["threads"].is_empty())
+        if let Some(threads) = res.results.get("threads") {
+            if let Some(threads) = threads.as_array() {
+                Ok(!threads.is_empty())
+            } else {
+                Err(AppError::GDBError("threads is not an array".to_string()))
+            }
+        } else {
+            Err(AppError::GDBError("threads is not found".to_string()))
+        }
     }
 }
