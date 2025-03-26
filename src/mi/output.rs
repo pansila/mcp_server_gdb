@@ -4,16 +4,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 
 use anyhow::Result;
-use json::JsonValue;
-use json::object::Object;
 use nom::branch::alt;
 use nom::bytes::complete::{is_not, tag, take_while_m_n};
 use nom::character::complete::{char, digit1, line_ending, multispace1};
 use nom::combinator::{map, map_opt, map_res, opt, value, verify};
 use nom::error::{FromExternalError, ParseError};
 use nom::multi::{fold, many0, separated_list0};
-use nom::sequence::{delimited, preceded};
+use nom::sequence::{delimited, preceded, separated_pair};
 use nom::{IResult, Parser};
+use serde_json::{Map, Value};
 use tracing::{debug, error, info};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +42,7 @@ pub enum ThreadEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AsyncClass {
+    Running,
     Stopped,
     CmdParamChanged,
     LibraryLoaded,
@@ -69,7 +69,7 @@ pub enum StreamKind {
 pub struct ResultRecord {
     pub(crate) token: Option<u64>,
     pub class: ResultClass,
-    pub results: Object,
+    pub results: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -78,7 +78,7 @@ pub enum OutOfBandRecord {
         token: Option<u64>,
         kind: AsyncKind,
         class: AsyncClass,
-        results: Object,
+        results: Value,
     },
     StreamRecord {
         kind: StreamKind,
@@ -276,36 +276,30 @@ fn string(input: &str) -> IResult<&str, String> {
     delimited(char('"'), build_string, char('"')).parse(input)
 }
 
-fn to_map(v: Vec<(String, JsonValue)>) -> Object {
-    //TODO: fix this and parse the map directly
-    let mut obj = Object::new();
-    for (name, value) in v {
-        debug_assert!(obj.get(&name).is_none(), "Duplicate object member!");
-        obj.insert(&name, value);
-    }
-    obj
+fn to_map(v: Vec<(String, Value)>) -> Map<String, Value> {
+    Map::from_iter(v.into_iter())
 }
 
-fn to_list(v: Vec<(String, JsonValue)>) -> Vec<JsonValue> {
+fn to_list(v: Vec<(String, Value)>) -> Vec<Value> {
     //The gdbmi-grammar is really weird...
     //TODO: fix this and parse the map directly
     v.into_iter().map(|(_, value)| value).collect()
 }
 
-fn json_value(input: &str) -> IResult<&str, JsonValue> {
+fn json_value(input: &str) -> IResult<&str, Value> {
     alt((
-        map(string, JsonValue::String),
+        map(string, Value::String),
         map(
-            delimited(char('{'), separated_list0(char(','), result), char('}')),
-            |results| JsonValue::Object(to_map(results)),
+            delimited(char('{'), separated_list0(char(','), key_value), char('}')),
+            |results| Value::Object(to_map(results)),
         ),
         map(
             delimited(char('['), separated_list0(char(','), json_value), char(']')),
-            |values| JsonValue::Array(values),
+            |values| Value::Array(values),
         ),
         map(
-            delimited(char('['), separated_list0(char(','), result), char(']')),
-            |values| JsonValue::Array(to_list(values)),
+            delimited(char('['), separated_list0(char(','), key_value), char(']')),
+            |values| Value::Array(to_list(values)),
         ),
     ))
     .parse(input)
@@ -313,27 +307,27 @@ fn json_value(input: &str) -> IResult<&str, JsonValue> {
 
 // Don't even ask... Against its spec, gdb(mi) sometimes emits multiple values for a single tuple
 // in a comma separated list.
-fn buggy_gdb_list_in_result(input: &str) -> IResult<&str, JsonValue> {
+fn buggy_gdb_list_in_result(input: &str) -> IResult<&str, Value> {
     map(
         separated_list0(tag(","), json_value),
-        |mut values: Vec<JsonValue>| {
+        |mut values: Vec<Value>| {
             if values.len() == 1 {
                 values
                     .pop()
                     .expect("len == 1 => first element is guaranteed")
             } else {
-                JsonValue::Array(values)
+                Value::Array(values)
             }
         },
     )
     .parse(input)
 }
 
-/// key=value, or just a value which is json object
-fn result(input: &str) -> IResult<&str, (String, JsonValue)> {
+/// key=value, not a json object
+fn key_value(input: &str) -> IResult<&str, (String, Value)> {
     map(
-        (is_not("={}"), tag("="), buggy_gdb_list_in_result),
-        |(var, _, val)| (var.to_string(), val),
+        separated_pair(is_not("={}"), char('='), buggy_gdb_list_in_result),
+        |(var, val)| (var.to_string(), val),
     )
     .parse(input)
 }
@@ -351,13 +345,13 @@ fn result_record(input: &str) -> IResult<&str, Output> {
             opt(token),
             char('^'),
             result_class,
-            many0((char(','), result)),
+            many0(preceded(char(','), key_value)),
         ),
         |(t, _, c, results)| {
             Output::Result(ResultRecord {
                 token: t,
                 class: c,
-                results: to_map(results.into_iter().map(|(_, v)| (v.0, v.1)).collect()),
+                results: Value::Object(to_map(results)),
             })
         },
     )
@@ -375,6 +369,7 @@ fn async_kind(input: &str) -> IResult<&str, AsyncKind> {
 
 fn async_class(input: &str) -> IResult<&str, AsyncClass> {
     alt((
+        value(AsyncClass::Running, tag("running")),
         value(AsyncClass::Stopped, tag("stopped")),
         value(
             AsyncClass::Thread(ThreadEvent::Created),
@@ -417,7 +412,7 @@ fn async_class(input: &str) -> IResult<&str, AsyncClass> {
 
 /// \[token\] async-kind async-class ( "," result )* nl,
 /// where async-kind is one of: * (exec), + (status), = (notify),
-/// and async-class is one of: stopped, thread-created, thread-group-started, thread-exited, thread-group-exited,
+/// and async-class is one of: running, stopped, thread-created, thread-group-started, thread-exited, thread-group-exited,
 /// thread-selected, cmd-param-changed, library-loaded, breakpoint-created, breakpoint-deleted, breakpoint-modified, other
 /// and result is a json object
 fn async_record(input: &str) -> IResult<&str, OutOfBandRecord> {
@@ -426,13 +421,13 @@ fn async_record(input: &str) -> IResult<&str, OutOfBandRecord> {
             opt(token),
             async_kind,
             async_class,
-            many0((char(','), result)),
+            many0(preceded(char(','), key_value)),
         ),
         |(t, kind, class, results)| OutOfBandRecord::AsyncRecord {
             token: t,
             kind,
             class,
-            results: to_map(results.into_iter().map(|(_, v)| (v.0, v.1)).collect()),
+            results: Value::Object(to_map(results)),
         },
     )
     .parse(input)
@@ -464,7 +459,7 @@ fn out_of_band_record(input: &str) -> IResult<&str, Output> {
     .parse(input)
 }
 
-fn gdb_line(input: &str) -> IResult<&str, Output> {
+fn prompt(input: &str) -> IResult<&str, Output> {
     value(Output::GDBLine, tag("(gdb) ")).parse(input)
 }
 
@@ -475,7 +470,7 @@ fn debug_line(input: &str) -> IResult<&str, Output> {
 fn output(input: &str) -> IResult<&str, Output> {
     map(
         (
-            alt((result_record, out_of_band_record, gdb_line, debug_line)),
+            alt((result_record, out_of_band_record, prompt, debug_line)),
             line_ending,
         ),
         |(output, _)| output,
@@ -502,10 +497,9 @@ mod test {
             {
                 assert_eq!(kind, AsyncKind::Notify);
                 assert_eq!(class, AsyncClass::LibraryLoaded);
-                assert_eq!(results.len(), 1);
                 assert_eq!(
                     results.get("ranges"),
-                    Some(&JsonValue::Array(vec![JsonValue::Object(Object::new())]))
+                    Some(&Value::Array(vec![Value::Object(Map::new())]))
                 );
             } else {
                 panic!("output is not a out of band record");
@@ -524,14 +518,20 @@ mod test {
                 assert_eq!(result.token, None);
                 assert_eq!(result.class, ResultClass::Done);
                 if let Some(bkpt) = result.results.get("bkpt") {
-                    assert_eq!(bkpt["number"], JsonValue::String("1".to_string()));
-                    assert_eq!(bkpt["type"], JsonValue::String("breakpoint".to_string()));
-                    assert_eq!(bkpt["disp"], JsonValue::String("keep".to_string()));
-                    assert_eq!(bkpt["enabled"], JsonValue::String("y".to_string()));
+                    assert_eq!(bkpt["number"], Value::String("1".to_string()));
+                    assert_eq!(bkpt["type"], Value::String("breakpoint".to_string()));
+                    assert_eq!(bkpt["disp"], Value::String("keep".to_string()));
+                    assert_eq!(bkpt["enabled"], Value::String("y".to_string()));
                     assert_eq!(
                         bkpt["addr"],
-                        JsonValue::String("0x0000000000018fdf".to_string())
+                        Value::String("0x0000000000018fdf".to_string())
                     );
+                    assert_eq!(
+                        bkpt["thread-groups"],
+                        Value::Array(vec![Value::String("i1".to_string())])
+                    );
+                } else {
+                    panic!("bkpt is not found");
                 }
             }
         }

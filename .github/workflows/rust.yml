@@ -17,7 +17,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Set Up Dependencies
-      run: sudo apt-get install -y gdb
+      run: sudo apt-get update && sudo apt-get install -y gdb
     - name: Build
       run: cargo build
     - name: Run tests

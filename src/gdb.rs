@@ -103,14 +103,10 @@ impl GDBManager {
                     let transport = TRANSPORT.lock().await;
                     if let Some(transport) = transport.as_ref() {
                         if let Err(e) = transport
-                            .send_notification("create_session", Some(json!(results.dump())))
+                            .send_notification("create_session", Some(results))
                             .await
                         {
-                            tracing::error!(
-                                "Failed to send ping to session {}: {:?}",
-                                results.dump(),
-                                e
-                            );
+                            tracing::error!("Failed to send ping to session: {:?}", e);
                         }
                     } else {
                         break;
@@ -204,7 +200,7 @@ impl GDBManager {
             .ok_or_else(|| AppError::NotFound(format!("Session {} does not exist", session_id)))?;
 
         let record = handle.gdb.execute(command).await?;
-        let output = record.results.dump();
+        let output = record.results.to_string();
 
         debug!("GDB output: {}", output);
         Ok(record)
@@ -223,7 +219,7 @@ impl GDBManager {
         )
         .await
         {
-            Ok(Ok(result)) => Ok(result.results.dump()),
+            Ok(Ok(result)) => Ok(result.results.to_string()),
             Ok(Err(e)) => Err(e),
             Err(_) => Err(AppError::GDBTimeout),
         }
