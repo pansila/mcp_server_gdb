@@ -484,8 +484,11 @@ mod test {
 
     #[test]
     fn test_output() {
-        let Ok(output) = Output::parse("=library-loaded,ranges=[{}]\n") else {
-            panic!("parse output failed");
+        let output = match Output::parse("=library-loaded,ranges=[{}]\n") {
+            Ok(output) => output,
+            Err(e) => {
+                panic!("parse output failed: {}", e);
+            }
         };
         if let Output::OutOfBand(record) = output {
             if let OutOfBandRecord::AsyncRecord {
@@ -509,30 +512,86 @@ mod test {
 
     #[test]
     fn test_result_record() {
-        if let Ok(output) = Output::parse(
+        let output = match Output::parse(
             "^done,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"0x0000000000018fdf\",\
                   func=\"test_app::main::{async_block#0}\",file=\"src/bin/test_app.rs\",fullname=\"mcp_server_gdb/src/bin/test_app.rs\",\
-                  line=\"5\",thread-groups=[\"i1\"],times=\"0\",original-location=\"test_app.rs:5\"}",
+                  line=\"5\",thread-groups=[\"i1\"],times=\"0\",original-location=\"test_app.rs:5\"}\n",
         ) {
-            if let Output::Result(result) = output {
-                assert_eq!(result.token, None);
-                assert_eq!(result.class, ResultClass::Done);
-                if let Some(bkpt) = result.results.get("bkpt") {
-                    assert_eq!(bkpt["number"], Value::String("1".to_string()));
-                    assert_eq!(bkpt["type"], Value::String("breakpoint".to_string()));
-                    assert_eq!(bkpt["disp"], Value::String("keep".to_string()));
-                    assert_eq!(bkpt["enabled"], Value::String("y".to_string()));
-                    assert_eq!(
-                        bkpt["addr"],
-                        Value::String("0x0000000000018fdf".to_string())
-                    );
-                    assert_eq!(
-                        bkpt["thread-groups"],
-                        Value::Array(vec![Value::String("i1".to_string())])
-                    );
+            Ok(output) => output,
+            Err(e) => {
+                panic!("parse output failed: {}", e);
+            }
+        };
+        if let Output::Result(result) = output {
+            assert_eq!(result.token, None);
+            assert_eq!(result.class, ResultClass::Done);
+            if let Some(bkpt) = result.results.get("bkpt") {
+                assert_eq!(bkpt["number"], Value::String("1".to_string()));
+                assert_eq!(bkpt["type"], Value::String("breakpoint".to_string()));
+                assert_eq!(bkpt["disp"], Value::String("keep".to_string()));
+                assert_eq!(bkpt["enabled"], Value::String("y".to_string()));
+                assert_eq!(
+                    bkpt["addr"],
+                    Value::String("0x0000000000018fdf".to_string())
+                );
+                assert_eq!(
+                    bkpt["thread-groups"],
+                    Value::Array(vec![Value::String("i1".to_string())])
+                );
+            } else {
+                panic!("bkpt is not found");
+            }
+        }
+    }
+
+    #[test]
+    fn test_async_record() {
+        let output = match Output::parse(
+            "*stopped,reason=\"breakpoint-hit\",disp=\"keep\",bkptno=\"1\",frame={addr=\"0x000055555557003f\",\
+            func=\"test_app::main::{async_block#0}\",args=[],file=\"src/bin/test_app.rs\",\
+            fullname=\"/mcp_server_gdb/src/bin/test_app.rs\",line=\"5\",arch=\"i386:x86-64\"},\
+            thread-id=\"1\",stopped-threads=\"all\",core=\"6\"\n",
+        ) {
+            Ok(output) => output,
+            Err(e) => {
+                panic!("parse output failed: {}", e);
+            }
+        };
+        if let Output::OutOfBand(record) = output {
+            if let OutOfBandRecord::AsyncRecord {
+                kind,
+                class,
+                results,
+                ..
+            } = record
+            {
+                assert_eq!(kind, AsyncKind::Exec);
+                assert_eq!(class, AsyncClass::Stopped);
+                assert_eq!(
+                    results.get("reason"),
+                    Some(&Value::String("breakpoint-hit".to_string()))
+                );
+                assert_eq!(
+                    results.get("disp"),
+                    Some(&Value::String("keep".to_string()))
+                );
+                assert_eq!(results.get("bkptno"), Some(&Value::String("1".to_string())));
+                if let Some(frame) = results.get("frame") {
+                    assert_eq!(frame.get("addr"), Some(&Value::String("0x000055555557003f".to_string())));
+                    assert_eq!(frame.get("func"), Some(&Value::String("test_app::main::{async_block#0}".to_string())));
+                    assert_eq!(frame.get("args"), Some(&Value::Array(vec![])));
+                    assert_eq!(frame.get("file"), Some(&Value::String("src/bin/test_app.rs".to_string())));
+                    assert_eq!(frame.get("fullname"), Some(&Value::String("/mcp_server_gdb/src/bin/test_app.rs".to_string())));
+                    assert_eq!(frame.get("line"), Some(&Value::String("5".to_string())));
+                    assert_eq!(frame.get("arch"), Some(&Value::String("i386:x86-64".to_string())));
                 } else {
-                    panic!("bkpt is not found");
+                    panic!("frame is not found");
                 }
+                assert_eq!(results.get("thread-id"), Some(&Value::String("1".to_string())));
+                assert_eq!(results.get("stopped-threads"), Some(&Value::String("all".to_string())));
+                assert_eq!(results.get("core"), Some(&Value::String("6".to_string())));
+            } else {
+                panic!("output is not a out of band record");
             }
         }
     }
