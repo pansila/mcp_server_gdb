@@ -1,8 +1,16 @@
 [package]
-name = "mcp_server_gdb"
-version = "0.1.0"
+authors = ["Lix Zhou <xeontz@gmail.com>"]
+description = "A GDB/MI protocol server based on the MCP protocol, providing remote application debugging capabilities"
+name = "mcp-server-gdb"
+version = "0.2.0"
 edition = "2024"
-default-run = "mcp_server_gdb"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/pansila/mcp_server_gdb"
+homepage = "https://github.com/pansila/mcp_server_gdb"
+keywords = ["MCP", "tool", "AI", "LLM", "Agent"]
+categories = ["command-line-utilities"]
+default-run = "mcp-server-gdb"
 
 [dependencies]
 tokio = { version = "1.44", features = ["full"] }
@@ -24,9 +32,10 @@ nom = "8.0"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29.0", features = ["process", "signal"] }
+openssl = { version = "0.10", features = ["vendored"] }
 
 [[bin]]
-name = "mcp_server_gdb"
+name = "mcp-server-gdb"
 path = "src/main.rs"
 
 [[bin]]

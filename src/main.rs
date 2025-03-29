@@ -67,13 +67,14 @@ async fn main() -> Result<()> {
 
     tools::init_gdb_manager();
 
-    let server_protocol = Server::builder("MCP Server GDB".to_string(), "0.1.0".to_string())
-        .capabilities(ServerCapabilities {
-            tools: Some(json!({
-                "listChanged": false,
-            })),
-            ..Default::default()
-        });
+    let server_protocol =
+        Server::builder("MCP Server GDB".to_string(), env!("CARGO_PKG_VERSION").to_string())
+            .capabilities(ServerCapabilities {
+                tools: Some(json!({
+                    "listChanged": false,
+                })),
+                ..Default::default()
+            });
 
     let server_protocol = register_tools(server_protocol).build();
 
@@ -90,7 +91,7 @@ async fn main() -> Result<()> {
         }
         TransportType::Sse => {
             let transport = Arc::new(Box::new(ServerSseTransport::new(
-                "127.0.0.1".to_string(),
+                config.server_ip,
                 config.server_port,
                 server_protocol,
             )) as Box<dyn Transport>);
@@ -106,57 +107,18 @@ async fn main() -> Result<()> {
 /// Register all debugging tools to the server
 fn register_tools(builder: ServerProtocolBuilder) -> ServerProtocolBuilder {
     builder
-        .register_tool(
-            tools::CreateSessionTool::tool(),
-            tools::CreateSessionTool::call(),
-        )
+        .register_tool(tools::CreateSessionTool::tool(), tools::CreateSessionTool::call())
         .register_tool(tools::GetSessionTool::tool(), tools::GetSessionTool::call())
-        .register_tool(
-            tools::GetAllSessionsTool::tool(),
-            tools::GetAllSessionsTool::call(),
-        )
-        .register_tool(
-            tools::CloseSessionTool::tool(),
-            tools::CloseSessionTool::call(),
-        )
-        .register_tool(
-            tools::StartDebuggingTool::tool(),
-            tools::StartDebuggingTool::call(),
-        )
-        .register_tool(
-            tools::StopDebuggingTool::tool(),
-            tools::StopDebuggingTool::call(),
-        )
-        .register_tool(
-            tools::GetBreakpointsTool::tool(),
-            tools::GetBreakpointsTool::call(),
-        )
-        .register_tool(
-            tools::SetBreakpointTool::tool(),
-            tools::SetBreakpointTool::call(),
-        )
-        .register_tool(
-            tools::DeleteBreakpointTool::tool(),
-            tools::DeleteBreakpointTool::call(),
-        )
-        .register_tool(
-            tools::GetStackFramesTool::tool(),
-            tools::GetStackFramesTool::call(),
-        )
-        .register_tool(
-            tools::GetLocalVariablesTool::tool(),
-            tools::GetLocalVariablesTool::call(),
-        )
-        .register_tool(
-            tools::ContinueExecutionTool::tool(),
-            tools::ContinueExecutionTool::call(),
-        )
-        .register_tool(
-            tools::StepExecutionTool::tool(),
-            tools::StepExecutionTool::call(),
-        )
-        .register_tool(
-            tools::NextExecutionTool::tool(),
-            tools::NextExecutionTool::call(),
-        )
+        .register_tool(tools::GetAllSessionsTool::tool(), tools::GetAllSessionsTool::call())
+        .register_tool(tools::CloseSessionTool::tool(), tools::CloseSessionTool::call())
+        .register_tool(tools::StartDebuggingTool::tool(), tools::StartDebuggingTool::call())
+        .register_tool(tools::StopDebuggingTool::tool(), tools::StopDebuggingTool::call())
+        .register_tool(tools::GetBreakpointsTool::tool(), tools::GetBreakpointsTool::call())
+        .register_tool(tools::SetBreakpointTool::tool(), tools::SetBreakpointTool::call())
+        .register_tool(tools::DeleteBreakpointTool::tool(), tools::DeleteBreakpointTool::call())
+        .register_tool(tools::GetStackFramesTool::tool(), tools::GetStackFramesTool::call())
+        .register_tool(tools::GetLocalVariablesTool::tool(), tools::GetLocalVariablesTool::call())
+        .register_tool(tools::ContinueExecutionTool::tool(), tools::ContinueExecutionTool::call())
+        .register_tool(tools::StepExecutionTool::tool(), tools::StepExecutionTool::call())
+        .register_tool(tools::NextExecutionTool::tool(), tools::NextExecutionTool::call())
 }

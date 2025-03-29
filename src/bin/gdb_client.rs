@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
     let client: Box<dyn Any> = match args.transport {
         TransportType::Stdio => {
             let transport = ClientStdioTransport::new(
-                "./target/debug/mcp_server_gdb",
+                "./target/debug/mcp-server-gdb",
                 &["--log-level", "debug"],
             )?;
             let client = ClientBuilder::new(transport).build();
@@ -91,10 +91,7 @@ async fn main() -> Result<()> {
             // Initialize client
             client
                 .initialize(
-                    Implementation {
-                        name: "gdb-client".to_string(),
-                        version: "1.0".to_string(),
-                    },
+                    Implementation { name: "gdb-client".to_string(), version: "1.0".to_string() },
                     ClientCapabilities::default(),
                 )
                 .await?;

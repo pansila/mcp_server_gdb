@@ -1,6 +1,8 @@
 #[derive(Debug)]
 /// Server Configuration
 pub struct Config {
+    /// Server URL
+    pub server_ip: String,
     /// Server port
     pub server_port: u16,
     /// GDB command execution timeout in seconds
@@ -10,6 +12,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            server_ip: std::env::var("SERVER_IP").unwrap_or_else(|_| "127.0.0.1".to_string()),
             server_port: std::env::var("SERVER_PORT")
                 .unwrap_or_else(|_| "8080".to_string())
                 .parse()

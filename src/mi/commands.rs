@@ -43,19 +43,11 @@ impl std::str::FromStr for BreakPointNumber {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(dot_pos) = s.find('.') {
             let major = s[..dot_pos].parse::<usize>().map_err(|e| e.to_string())?;
-            let minor = s[dot_pos + 1..]
-                .parse::<usize>()
-                .map_err(|e| e.to_string())?;
-            Ok(BreakPointNumber {
-                major,
-                minor: Some(minor),
-            })
+            let minor = s[dot_pos + 1..].parse::<usize>().map_err(|e| e.to_string())?;
+            Ok(BreakPointNumber { major, minor: Some(minor) })
         } else {
             match s.parse::<usize>() {
-                Ok(val) => Ok(BreakPointNumber {
-                    major: val,
-                    minor: None,
-                }),
+                Ok(val) => Ok(BreakPointNumber { major: val, minor: None }),
                 Err(e) => Err(e.to_string()),
             }
         }
@@ -115,10 +107,7 @@ impl MiCommand {
             }
         }
         command.push("\n");
-        info!(
-            "Writing GDB command: {}",
-            String::from_utf8_lossy(command.as_encoded_bytes())
-        );
+        info!("Writing GDB command: {}", String::from_utf8_lossy(command.as_encoded_bytes()));
 
         sink.write_all(command.as_encoded_bytes()).await?;
         Ok(())
@@ -230,18 +219,11 @@ impl MiCommand {
         let mut options = breakpoint_numbers;
         options.sort();
         options.dedup();
-        MiCommand {
-            operation: "break-delete",
-            options: Some(options),
-            parameters: None,
-        }
+        MiCommand { operation: "break-delete", options: Some(options), parameters: None }
     }
 
     pub fn breakpoints_list() -> MiCommand {
-        MiCommand {
-            operation: "break-list",
-            ..Default::default()
-        }
+        MiCommand { operation: "break-list", ..Default::default() }
     }
 
     pub fn insert_watchpoing(expression: &str, mode: WatchMode) -> MiCommand {
@@ -250,73 +232,44 @@ impl MiCommand {
             WatchMode::Read => Some(vec!["-r".into()]),
             WatchMode::Access => Some(vec!["-a".into()]),
         };
-        MiCommand {
-            operation: "break-watch",
-            options,
-            parameters: Some(vec![expression.into()]),
-        }
+        MiCommand { operation: "break-watch", options, parameters: Some(vec![expression.into()]) }
     }
 
     pub fn environment_pwd() -> MiCommand {
-        MiCommand {
-            operation: "environment-pwd",
-            ..Default::default()
-        }
+        MiCommand { operation: "environment-pwd", ..Default::default() }
     }
 
     // Be aware: This does not seem to always interrupt execution.
     // Use gdb.interrupt_execution instead.
     pub fn exec_interrupt() -> MiCommand {
-        MiCommand {
-            operation: "exec-interrupt",
-            ..Default::default()
-        }
+        MiCommand { operation: "exec-interrupt", ..Default::default() }
     }
 
     pub fn exec_run() -> MiCommand {
-        MiCommand {
-            operation: "exec-run",
-            ..Default::default()
-        }
+        MiCommand { operation: "exec-run", ..Default::default() }
     }
 
     pub fn exec_continue() -> MiCommand {
-        MiCommand {
-            operation: "exec-continue",
-            ..Default::default()
-        }
+        MiCommand { operation: "exec-continue", ..Default::default() }
     }
 
     pub fn exec_step() -> MiCommand {
-        MiCommand {
-            operation: "exec-step",
-            ..Default::default()
-        }
+        MiCommand { operation: "exec-step", ..Default::default() }
     }
 
     pub fn exec_next() -> MiCommand {
-        MiCommand {
-            operation: "exec-next",
-            ..Default::default()
-        }
+        MiCommand { operation: "exec-next", ..Default::default() }
     }
 
     // Warning: This cannot be used to pass special characters like \n to gdb because
     // (unlike it is said in the spec) there is apparently no way to pass \n unescaped
     // to gdb, and for "exec-arguments" gdb somehow does not unescape these chars...
     pub fn exec_arguments(args: Vec<OsString>) -> MiCommand {
-        MiCommand {
-            operation: "exec-arguments",
-            options: Some(args),
-            parameters: None,
-        }
+        MiCommand { operation: "exec-arguments", options: Some(args), parameters: None }
     }
 
     pub fn exit() -> MiCommand {
-        MiCommand {
-            operation: "gdb-exit",
-            ..Default::default()
-        }
+        MiCommand { operation: "gdb-exit", ..Default::default() }
     }
 
     pub fn select_frame(frame_number: u64) -> MiCommand {
@@ -340,10 +293,7 @@ impl MiCommand {
     }
 
     pub fn stack_info_depth() -> MiCommand {
-        MiCommand {
-            operation: "stack-info-depth",
-            ..Default::default()
-        }
+        MiCommand { operation: "stack-info-depth", ..Default::default() }
     }
 
     pub fn stack_list_variables(
@@ -360,11 +310,7 @@ impl MiCommand {
             parameters.push(frame_number.to_string().into());
         }
         parameters.push("--simple-values".into()); //TODO: make configurable if required.
-        MiCommand {
-            operation: "stack-list-variables",
-            options: None,
-            parameters: Some(parameters),
-        }
+        MiCommand { operation: "stack-list-variables", options: None, parameters: Some(parameters) }
     }
 
     pub fn stack_list_frames(low_frame: Option<usize>, high_frame: Option<usize>) -> MiCommand {
@@ -386,11 +332,7 @@ impl MiCommand {
                 None
             }
         };
-        MiCommand {
-            operation: "stack-list-frames",
-            options,
-            parameters: None,
-        }
+        MiCommand { operation: "stack-list-frames", options, parameters: None }
     }
 
     pub fn thread_info(thread_id: Option<u64>) -> MiCommand {
@@ -416,11 +358,7 @@ impl MiCommand {
     pub fn file_symbol_file(file: Option<&Path>) -> MiCommand {
         MiCommand {
             operation: "file-symbol-file",
-            options: if let Some(file) = file {
-                Some(vec![file.into()])
-            } else {
-                None
-            },
+            options: if let Some(file) = file { Some(vec![file.into()]) } else { None },
             parameters: None,
         }
     }
@@ -433,12 +371,7 @@ impl MiCommand {
             } else {
                 None
             },
-            parameters: Some(
-                thread_group_ids
-                    .iter()
-                    .map(|id| id.to_string().into())
-                    .collect(),
-            ),
+            parameters: Some(thread_group_ids.iter().map(|id| id.to_string().into()).collect()),
         }
     }
 
@@ -452,10 +385,7 @@ impl MiCommand {
             options: None,
             parameters: Some(vec![
                 name.unwrap_or_else(|| "\"-\"".into()),
-                frame_addr
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "\"*\"".to_string())
-                    .into(),
+                frame_addr.map(|s| s.to_string()).unwrap_or_else(|| "\"*\"".to_string()).into(),
                 escape_command(expression).into(),
             ]),
         }
@@ -466,11 +396,7 @@ impl MiCommand {
             parameters.push("-c".into());
         }
         parameters.push(name.into());
-        MiCommand {
-            operation: "var-delete",
-            options: None,
-            parameters: Some(parameters),
-        }
+        MiCommand { operation: "var-delete", options: None, parameters: Some(parameters) }
     }
     pub fn var_list_children(
         name: impl Into<OsString>,
@@ -481,12 +407,7 @@ impl MiCommand {
             operation: "var-list-children",
             options: None,
             parameters: Some(vec![
-                if print_values {
-                    "--all-values"
-                } else {
-                    "--no-values"
-                }
-                .into(),
+                if print_values { "--all-values" } else { "--no-values" }.into(),
                 name.into(),
             ]),
         };
@@ -498,9 +419,6 @@ impl MiCommand {
     }
 
     pub fn empty() -> MiCommand {
-        MiCommand {
-            operation: "",
-            ..Default::default()
-        }
+        MiCommand { operation: "", ..Default::default() }
     }
 }
