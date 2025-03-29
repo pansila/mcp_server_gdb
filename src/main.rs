@@ -67,13 +67,16 @@ async fn main() -> Result<()> {
 
     tools::init_gdb_manager();
 
-    let server_protocol = Server::builder("MCP Server GDB".to_string(), "0.1.0".to_string())
-        .capabilities(ServerCapabilities {
-            tools: Some(json!({
-                "listChanged": false,
-            })),
-            ..Default::default()
-        });
+    let server_protocol = Server::builder(
+        "MCP Server GDB".to_string(),
+        env!("CARGO_PKG_VERSION").to_string(),
+    )
+    .capabilities(ServerCapabilities {
+        tools: Some(json!({
+            "listChanged": false,
+        })),
+        ..Default::default()
+    });
 
     let server_protocol = register_tools(server_protocol).build();
 
@@ -90,7 +93,7 @@ async fn main() -> Result<()> {
         }
         TransportType::Sse => {
             let transport = Arc::new(Box::new(ServerSseTransport::new(
-                "127.0.0.1".to_string(),
+                config.server_ip,
                 config.server_port,
                 server_protocol,
             )) as Box<dyn Transport>);
