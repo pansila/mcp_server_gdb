@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::{io::AsyncWriteExt, sync::Mutex};
 use tokio::{sync::mpsc, task::JoinHandle};
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 use crate::mi::{
@@ -87,28 +87,38 @@ impl GDBManager {
             opt_tty: tty,
         };
 
-        // TODO: connect it to MCP notification
         let (oob_src, mut oob_sink) = mpsc::channel(100);
         let gdb = gdb_builder.try_spawn(oob_src)?;
 
         let oob_handle = tokio::spawn(async move {
             loop {
-                if let Some(OutOfBandRecord::AsyncRecord {
-                    token,
-                    kind,
-                    class,
-                    results,
-                }) = oob_sink.recv().await
-                {
-                    let transport = TRANSPORT.lock().await;
-                    if let Some(transport) = transport.as_ref() {
-                        if let Err(e) = transport
-                            .send_notification("create_session", Some(results))
-                            .await
-                        {
-                            tracing::error!("Failed to send ping to session: {:?}", e);
+                match oob_sink.recv().await {
+                    Some(record) => match record {
+                        OutOfBandRecord::AsyncRecord {
+                            token,
+                            kind,
+                            class,
+                            results,
+                        } => {
+                            let transport = TRANSPORT.lock().await;
+                            if let Some(transport) = transport.as_ref() {
+                                if let Err(e) = transport
+                                    .send_notification("create_session", Some(results))
+                                    .await
+                                {
+                                    error!("Failed to send ping to session: {:?}", e);
+                                }
+                            } else {
+                                warn!("Sink Channel closed");
+                                break;
+                            }
                         }
-                    } else {
+                        OutOfBandRecord::StreamRecord { kind, data } => {
+                            debug!("StreamRecord: {:?}", data);
+                        }
+                    },
+                    None => {
+                        debug!("Source Channel closed");
                         break;
                     }
                 }
