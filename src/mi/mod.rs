@@ -165,12 +165,7 @@ impl GDBBuilder {
         let is_running = Arc::new(AtomicBool::new(false));
         let is_running_clone = is_running.clone();
         let (result_input, result_output) = mpsc::channel(100);
-        tokio::spawn(process_output(
-            stdout,
-            result_input,
-            oob_sink,
-            is_running_clone,
-        ));
+        tokio::spawn(process_output(stdout, result_input, oob_sink, is_running_clone));
 
         let gdb = GDB {
             process: Arc::new(Mutex::new(child)),
@@ -189,10 +184,7 @@ impl GDB {
     pub async fn interrupt_execution(&self) -> Result<(), nix::Error> {
         use nix::sys::signal;
         use nix::unistd::Pid;
-        signal::kill(
-            Pid::from_raw(self.process.lock().await.id().unwrap() as i32),
-            signal::SIGINT,
-        )
+        signal::kill(Pid::from_raw(self.process.lock().await.id().unwrap() as i32), signal::SIGINT)
     }
 
     #[cfg(windows)]

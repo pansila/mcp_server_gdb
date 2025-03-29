@@ -43,10 +43,7 @@ struct GDBSessionHandle {
 impl GDBManager {
     /// Create a new GDB manager
     pub fn new() -> Self {
-        Self {
-            config: Config::default(),
-            sessions: Mutex::new(HashMap::new()),
-        }
+        Self { config: Config::default(), sessions: Mutex::new(HashMap::new()) }
     }
 
     /// Create a new GDB session
@@ -94,12 +91,7 @@ impl GDBManager {
             loop {
                 match oob_sink.recv().await {
                     Some(record) => match record {
-                        OutOfBandRecord::AsyncRecord {
-                            token,
-                            kind,
-                            class,
-                            results,
-                        } => {
+                        OutOfBandRecord::AsyncRecord { token, kind, class, results } => {
                             let transport = TRANSPORT.lock().await;
                             if let Some(transport) = transport.as_ref() {
                                 if let Err(e) = transport
@@ -129,23 +121,13 @@ impl GDBManager {
         let session = GDBSession {
             id: session_id.clone(),
             status: GDBSessionStatus::Created,
-            created_at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
         };
 
         // Store session
-        let handle = GDBSessionHandle {
-            info: session,
-            gdb,
-            oob_handle,
-        };
+        let handle = GDBSessionHandle { info: session, gdb, oob_handle };
 
-        self.sessions
-            .lock()
-            .await
-            .insert(session_id.clone(), handle);
+        self.sessions.lock().await.insert(session_id.clone(), handle);
 
         // Send empty command to GDB to flush the welcome messages
         let _ = self.send_command(&session_id, &MiCommand::empty()).await?;
@@ -156,10 +138,7 @@ impl GDBManager {
     /// Get all sessions
     pub async fn get_all_sessions(&self) -> AppResult<Vec<GDBSession>> {
         let sessions = self.sessions.lock().await;
-        let result = sessions
-            .values()
-            .map(|handle| handle.info.clone())
-            .collect();
+        let result = sessions.values().map(|handle| handle.info.clone()).collect();
         Ok(result)
     }
 
@@ -177,10 +156,7 @@ impl GDBManager {
         let mut sessions = self.sessions.lock().await;
 
         if let Some(handle) = sessions.remove(session_id) {
-            let _ = match self
-                .send_command_with_timeout(session_id, &MiCommand::exit())
-                .await
-            {
+            let _ = match self.send_command_with_timeout(session_id, &MiCommand::exit()).await {
                 Ok(result) => Some(result),
                 Err(_) => {
                     warn!("GDB exit command timed out, forcing process termination");
@@ -237,9 +213,7 @@ impl GDBManager {
 
     /// Start debugging
     pub async fn start_debugging(&self, session_id: &str) -> AppResult<String> {
-        let response = self
-            .send_command_with_timeout(session_id, &MiCommand::exec_run())
-            .await?;
+        let response = self.send_command_with_timeout(session_id, &MiCommand::exec_run()).await?;
 
         // Update session status
         let mut sessions = self.sessions.lock().await;
@@ -252,9 +226,8 @@ impl GDBManager {
 
     /// Stop debugging
     pub async fn stop_debugging(&self, session_id: &str) -> AppResult<String> {
-        let response = self
-            .send_command_with_timeout(session_id, &MiCommand::exec_interrupt())
-            .await?;
+        let response =
+            self.send_command_with_timeout(session_id, &MiCommand::exec_interrupt()).await?;
 
         // Update session status
         let mut sessions = self.sessions.lock().await;
@@ -267,9 +240,8 @@ impl GDBManager {
 
     /// Get breakpoint list
     pub async fn get_breakpoints(&self, session_id: &str) -> AppResult<Vec<Breakpoint>> {
-        let response = self
-            .send_command_with_timeout(session_id, &MiCommand::breakpoints_list())
-            .await?;
+        let response =
+            self.send_command_with_timeout(session_id, &MiCommand::breakpoints_list()).await?;
 
         // TODO: parse breakpoint table to a MD table
 
@@ -310,10 +282,7 @@ impl GDBManager {
         breakpoints: &str,
     ) -> AppResult<String> {
         let command = MiCommand::delete_breakpoints(
-            breakpoints
-                .split(',')
-                .map(|num| num.to_string().into())
-                .collect(),
+            breakpoints.split(',').map(|num| num.to_string().into()).collect(),
         );
         let response = self.send_command_with_timeout(session_id, &command).await?;
 
@@ -348,9 +317,8 @@ impl GDBManager {
 
     /// Continue execution
     pub async fn continue_execution(&self, session_id: &str) -> AppResult<String> {
-        let response = self
-            .send_command_with_timeout(session_id, &MiCommand::exec_continue())
-            .await?;
+        let response =
+            self.send_command_with_timeout(session_id, &MiCommand::exec_continue()).await?;
 
         // Update session status
         let mut sessions = self.sessions.lock().await;
@@ -363,18 +331,14 @@ impl GDBManager {
 
     /// Step execution
     pub async fn step_execution(&self, session_id: &str) -> AppResult<String> {
-        let response = self
-            .send_command_with_timeout(session_id, &MiCommand::exec_step())
-            .await?;
+        let response = self.send_command_with_timeout(session_id, &MiCommand::exec_step()).await?;
 
         Ok(response)
     }
 
     /// Next execution
     pub async fn next_execution(&self, session_id: &str) -> AppResult<String> {
-        let response = self
-            .send_command_with_timeout(session_id, &MiCommand::exec_next())
-            .await?;
+        let response = self.send_command_with_timeout(session_id, &MiCommand::exec_next()).await?;
 
         Ok(response)
     }

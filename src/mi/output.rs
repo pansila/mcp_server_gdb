@@ -74,16 +74,8 @@ pub struct ResultRecord {
 
 #[derive(Debug, Clone)]
 pub enum OutOfBandRecord {
-    AsyncRecord {
-        token: Option<u64>,
-        kind: AsyncKind,
-        class: AsyncClass,
-        results: Value,
-    },
-    StreamRecord {
-        kind: StreamKind,
-        data: String,
-    },
+    AsyncRecord { token: Option<u64>, kind: AsyncKind, class: AsyncClass, results: Value },
+    StreamRecord { kind: StreamKind, data: String },
 }
 
 #[derive(Debug, Clone)]
@@ -134,10 +126,8 @@ pub async fn process_output<T: AsyncRead + Unpin>(
                         result_pipe.send(record).await.expect("send result to pipe");
                     }
                     Output::OutOfBand(record) => {
-                        if let OutOfBandRecord::AsyncRecord {
-                            class: AsyncClass::Stopped,
-                            ..
-                        } = record
+                        if let OutOfBandRecord::AsyncRecord { class: AsyncClass::Stopped, .. } =
+                            record
                         {
                             is_running.store(false, Ordering::SeqCst);
                         }
@@ -289,18 +279,15 @@ fn to_list(v: Vec<(String, Value)>) -> Vec<Value> {
 fn json_value(input: &str) -> IResult<&str, Value> {
     alt((
         map(string, Value::String),
-        map(
-            delimited(char('{'), separated_list0(char(','), key_value), char('}')),
-            |results| Value::Object(to_map(results)),
-        ),
-        map(
-            delimited(char('['), separated_list0(char(','), json_value), char(']')),
-            |values| Value::Array(values),
-        ),
-        map(
-            delimited(char('['), separated_list0(char(','), key_value), char(']')),
-            |values| Value::Array(to_list(values)),
-        ),
+        map(delimited(char('{'), separated_list0(char(','), key_value), char('}')), |results| {
+            Value::Object(to_map(results))
+        }),
+        map(delimited(char('['), separated_list0(char(','), json_value), char(']')), |values| {
+            Value::Array(values)
+        }),
+        map(delimited(char('['), separated_list0(char(','), key_value), char(']')), |values| {
+            Value::Array(to_list(values))
+        }),
     ))
     .parse(input)
 }
@@ -308,27 +295,21 @@ fn json_value(input: &str) -> IResult<&str, Value> {
 // Don't even ask... Against its spec, gdb(mi) sometimes emits multiple values for a single tuple
 // in a comma separated list.
 fn buggy_gdb_list_in_result(input: &str) -> IResult<&str, Value> {
-    map(
-        separated_list0(tag(","), json_value),
-        |mut values: Vec<Value>| {
-            if values.len() == 1 {
-                values
-                    .pop()
-                    .expect("len == 1 => first element is guaranteed")
-            } else {
-                Value::Array(values)
-            }
-        },
-    )
+    map(separated_list0(tag(","), json_value), |mut values: Vec<Value>| {
+        if values.len() == 1 {
+            values.pop().expect("len == 1 => first element is guaranteed")
+        } else {
+            Value::Array(values)
+        }
+    })
     .parse(input)
 }
 
 /// key=value, not a json object
 fn key_value(input: &str) -> IResult<&str, (String, Value)> {
-    map(
-        separated_pair(is_not("={}"), char('='), buggy_gdb_list_in_result),
-        |(var, val)| (var.to_string(), val),
-    )
+    map(separated_pair(is_not("={}"), char('='), buggy_gdb_list_in_result), |(var, val)| {
+        (var.to_string(), val)
+    })
     .parse(input)
 }
 
@@ -341,12 +322,7 @@ fn token(input: &str) -> IResult<&str, u64> {
 /// and result is a json object
 fn result_record(input: &str) -> IResult<&str, Output> {
     map(
-        (
-            opt(token),
-            char('^'),
-            result_class,
-            many0(preceded(char(','), key_value)),
-        ),
+        (opt(token), char('^'), result_class, many0(preceded(char(','), key_value))),
         |(t, _, c, results)| {
             Output::Result(ResultRecord {
                 token: t,
@@ -371,40 +347,16 @@ fn async_class(input: &str) -> IResult<&str, AsyncClass> {
     alt((
         value(AsyncClass::Running, tag("running")),
         value(AsyncClass::Stopped, tag("stopped")),
-        value(
-            AsyncClass::Thread(ThreadEvent::Created),
-            tag("thread-created"),
-        ),
-        value(
-            AsyncClass::Thread(ThreadEvent::GroupStarted),
-            tag("thread-group-started"),
-        ),
-        value(
-            AsyncClass::Thread(ThreadEvent::Exited),
-            tag("thread-exited"),
-        ),
-        value(
-            AsyncClass::Thread(ThreadEvent::GroupExited),
-            tag("thread-group-exited"),
-        ),
-        value(
-            AsyncClass::Thread(ThreadEvent::Selected),
-            tag("thread-selected"),
-        ),
+        value(AsyncClass::Thread(ThreadEvent::Created), tag("thread-created")),
+        value(AsyncClass::Thread(ThreadEvent::GroupStarted), tag("thread-group-started")),
+        value(AsyncClass::Thread(ThreadEvent::Exited), tag("thread-exited")),
+        value(AsyncClass::Thread(ThreadEvent::GroupExited), tag("thread-group-exited")),
+        value(AsyncClass::Thread(ThreadEvent::Selected), tag("thread-selected")),
         value(AsyncClass::CmdParamChanged, tag("cmd-param-changed")),
         value(AsyncClass::LibraryLoaded, tag("library-loaded")),
-        value(
-            AsyncClass::BreakPoint(BreakPointEvent::Created),
-            tag("breakpoint-created"),
-        ),
-        value(
-            AsyncClass::BreakPoint(BreakPointEvent::Deleted),
-            tag("breakpoint-deleted"),
-        ),
-        value(
-            AsyncClass::BreakPoint(BreakPointEvent::Modified),
-            tag("breakpoint-modified"),
-        ),
+        value(AsyncClass::BreakPoint(BreakPointEvent::Created), tag("breakpoint-created")),
+        value(AsyncClass::BreakPoint(BreakPointEvent::Deleted), tag("breakpoint-deleted")),
+        value(AsyncClass::BreakPoint(BreakPointEvent::Modified), tag("breakpoint-modified")),
         map(is_not(","), |msg: &str| AsyncClass::Other(msg.to_string())),
     ))
     .parse(input)
@@ -417,12 +369,7 @@ fn async_class(input: &str) -> IResult<&str, AsyncClass> {
 /// and result is a json object
 fn async_record(input: &str) -> IResult<&str, OutOfBandRecord> {
     map(
-        (
-            opt(token),
-            async_kind,
-            async_class,
-            many0(preceded(char(','), key_value)),
-        ),
+        (opt(token), async_kind, async_class, many0(preceded(char(','), key_value))),
         |(t, kind, class, results)| OutOfBandRecord::AsyncRecord {
             token: t,
             kind,
@@ -445,18 +392,13 @@ fn stream_kind(input: &str) -> IResult<&str, StreamKind> {
 /// stream-kind string nl,
 /// where stream-kind is one of: ~ (console), @ (target), & (log)
 fn stream_record(input: &str) -> IResult<&str, OutOfBandRecord> {
-    map((stream_kind, string), |(kind, msg)| {
-        OutOfBandRecord::StreamRecord { kind, data: msg }
-    })
-    .parse(input)
+    map((stream_kind, string), |(kind, msg)| OutOfBandRecord::StreamRecord { kind, data: msg })
+        .parse(input)
 }
 
 /// asynchronous records which reported out of band
 fn out_of_band_record(input: &str) -> IResult<&str, Output> {
-    map(alt((stream_record, async_record)), |record| {
-        Output::OutOfBand(record)
-    })
-    .parse(input)
+    map(alt((stream_record, async_record)), |record| Output::OutOfBand(record)).parse(input)
 }
 
 fn prompt(input: &str) -> IResult<&str, Output> {
@@ -469,10 +411,7 @@ fn debug_line(input: &str) -> IResult<&str, Output> {
 
 fn output(input: &str) -> IResult<&str, Output> {
     map(
-        (
-            alt((result_record, out_of_band_record, prompt, debug_line)),
-            line_ending,
-        ),
+        (alt((result_record, out_of_band_record, prompt, debug_line)), line_ending),
         |(output, _)| output,
     )
     .parse(input)
@@ -491,13 +430,7 @@ mod test {
             }
         };
         if let Output::OutOfBand(record) = output {
-            if let OutOfBandRecord::AsyncRecord {
-                kind,
-                class,
-                results,
-                ..
-            } = record
-            {
+            if let OutOfBandRecord::AsyncRecord { kind, class, results, .. } = record {
                 assert_eq!(kind, AsyncKind::Notify);
                 assert_eq!(class, AsyncClass::LibraryLoaded);
                 assert_eq!(
@@ -530,10 +463,7 @@ mod test {
                 assert_eq!(bkpt["type"], Value::String("breakpoint".to_string()));
                 assert_eq!(bkpt["disp"], Value::String("keep".to_string()));
                 assert_eq!(bkpt["enabled"], Value::String("y".to_string()));
-                assert_eq!(
-                    bkpt["addr"],
-                    Value::String("0x0000000000018fdf".to_string())
-                );
+                assert_eq!(bkpt["addr"], Value::String("0x0000000000018fdf".to_string()));
                 assert_eq!(
                     bkpt["thread-groups"],
                     Value::Array(vec![Value::String("i1".to_string())])
@@ -558,23 +488,14 @@ mod test {
             }
         };
         if let Output::OutOfBand(record) = output {
-            if let OutOfBandRecord::AsyncRecord {
-                kind,
-                class,
-                results,
-                ..
-            } = record
-            {
+            if let OutOfBandRecord::AsyncRecord { kind, class, results, .. } = record {
                 assert_eq!(kind, AsyncKind::Exec);
                 assert_eq!(class, AsyncClass::Stopped);
                 assert_eq!(
                     results.get("reason"),
                     Some(&Value::String("breakpoint-hit".to_string()))
                 );
-                assert_eq!(
-                    results.get("disp"),
-                    Some(&Value::String("keep".to_string()))
-                );
+                assert_eq!(results.get("disp"), Some(&Value::String("keep".to_string())));
                 assert_eq!(results.get("bkptno"), Some(&Value::String("1".to_string())));
                 if let Some(frame) = results.get("frame") {
                     assert_eq!(
@@ -583,9 +504,7 @@ mod test {
                     );
                     assert_eq!(
                         frame.get("func"),
-                        Some(&Value::String(
-                            "test_app::main::{async_block#0}".to_string()
-                        ))
+                        Some(&Value::String("test_app::main::{async_block#0}".to_string()))
                     );
                     assert_eq!(frame.get("args"), Some(&Value::Array(vec![])));
                     assert_eq!(
@@ -594,26 +513,15 @@ mod test {
                     );
                     assert_eq!(
                         frame.get("fullname"),
-                        Some(&Value::String(
-                            "/mcp_server_gdb/src/bin/test_app.rs".to_string()
-                        ))
+                        Some(&Value::String("/mcp_server_gdb/src/bin/test_app.rs".to_string()))
                     );
                     assert_eq!(frame.get("line"), Some(&Value::String("5".to_string())));
-                    assert_eq!(
-                        frame.get("arch"),
-                        Some(&Value::String("i386:x86-64".to_string()))
-                    );
+                    assert_eq!(frame.get("arch"), Some(&Value::String("i386:x86-64".to_string())));
                 } else {
                     panic!("frame is not found");
                 }
-                assert_eq!(
-                    results.get("thread-id"),
-                    Some(&Value::String("1".to_string()))
-                );
-                assert_eq!(
-                    results.get("stopped-threads"),
-                    Some(&Value::String("all".to_string()))
-                );
+                assert_eq!(results.get("thread-id"), Some(&Value::String("1".to_string())));
+                assert_eq!(results.get("stopped-threads"), Some(&Value::String("all".to_string())));
                 assert_eq!(results.get("core"), Some(&Value::String("6".to_string())));
             } else {
                 panic!("output is not a out of band record");
