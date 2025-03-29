@@ -159,6 +159,8 @@ async fn main() -> Result<()> {
     .await?;
     info!("Start debugging response: {:?}", start_response);
 
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
     // Get stack frames
     let frames_response = call_tool(
         &client,

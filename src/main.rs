@@ -82,8 +82,10 @@ async fn main() -> Result<()> {
             let transport = Arc::new(
                 Box::new(ServerStdioTransport::new(server_protocol)) as Box<dyn Transport>
             );
-            let mut transport_guard = TRANSPORT.lock().await;
-            *transport_guard = Some(transport.clone());
+            {
+                let mut transport_guard = TRANSPORT.lock().await;
+                *transport_guard = Some(transport.clone());
+            }
             transport.open().await
         }
         TransportType::Sse => {
@@ -92,8 +94,10 @@ async fn main() -> Result<()> {
                 config.server_port,
                 server_protocol,
             )) as Box<dyn Transport>);
-            let mut transport_guard = TRANSPORT.lock().await;
-            *transport_guard = Some(transport.clone());
+            {
+                let mut transport_guard = TRANSPORT.lock().await;
+                *transport_guard = Some(transport.clone());
+            }
             transport.open().await
         }
     }

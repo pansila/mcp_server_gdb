@@ -577,18 +577,43 @@ mod test {
                 );
                 assert_eq!(results.get("bkptno"), Some(&Value::String("1".to_string())));
                 if let Some(frame) = results.get("frame") {
-                    assert_eq!(frame.get("addr"), Some(&Value::String("0x000055555557003f".to_string())));
-                    assert_eq!(frame.get("func"), Some(&Value::String("test_app::main::{async_block#0}".to_string())));
+                    assert_eq!(
+                        frame.get("addr"),
+                        Some(&Value::String("0x000055555557003f".to_string()))
+                    );
+                    assert_eq!(
+                        frame.get("func"),
+                        Some(&Value::String(
+                            "test_app::main::{async_block#0}".to_string()
+                        ))
+                    );
                     assert_eq!(frame.get("args"), Some(&Value::Array(vec![])));
-                    assert_eq!(frame.get("file"), Some(&Value::String("src/bin/test_app.rs".to_string())));
-                    assert_eq!(frame.get("fullname"), Some(&Value::String("/mcp_server_gdb/src/bin/test_app.rs".to_string())));
+                    assert_eq!(
+                        frame.get("file"),
+                        Some(&Value::String("src/bin/test_app.rs".to_string()))
+                    );
+                    assert_eq!(
+                        frame.get("fullname"),
+                        Some(&Value::String(
+                            "/mcp_server_gdb/src/bin/test_app.rs".to_string()
+                        ))
+                    );
                     assert_eq!(frame.get("line"), Some(&Value::String("5".to_string())));
-                    assert_eq!(frame.get("arch"), Some(&Value::String("i386:x86-64".to_string())));
+                    assert_eq!(
+                        frame.get("arch"),
+                        Some(&Value::String("i386:x86-64".to_string()))
+                    );
                 } else {
                     panic!("frame is not found");
                 }
-                assert_eq!(results.get("thread-id"), Some(&Value::String("1".to_string())));
-                assert_eq!(results.get("stopped-threads"), Some(&Value::String("all".to_string())));
+                assert_eq!(
+                    results.get("thread-id"),
+                    Some(&Value::String("1".to_string()))
+                );
+                assert_eq!(
+                    results.get("stopped-threads"),
+                    Some(&Value::String("all".to_string()))
+                );
                 assert_eq!(results.get("core"), Some(&Value::String("6".to_string())));
             } else {
                 panic!("output is not a out of band record");
