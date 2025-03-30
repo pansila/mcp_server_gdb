@@ -169,6 +169,7 @@ async fn main() -> Result<()> {
     .await?;
     info!("Stack frames response: {:?}", frames_response);
 
+    // Get local variables
     let frames_response = call_tool(
         &client,
         "get_local_variables",
@@ -178,6 +179,17 @@ async fn main() -> Result<()> {
     )
     .await?;
     info!("Stack variables response: {:?}", frames_response);
+
+    // Get registers
+    let frames_response = call_tool(
+        &client,
+        "get_registers",
+        Some(json!({
+            "session_id": session_id
+        })),
+    )
+    .await?;
+    info!("Registers response: {:?}", frames_response);
 
     // Close session
     let close_response = call_tool(

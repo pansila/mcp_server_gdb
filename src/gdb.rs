@@ -14,7 +14,7 @@ use crate::error::{AppError, AppResult};
 use crate::mi::commands::{BreakPointLocation, BreakPointNumber, MiCommand, RegisterFormat};
 use crate::mi::output::{OutOfBandRecord, ResultClass, ResultRecord};
 use crate::mi::{GDB, GDBBuilder};
-use crate::models::{BreakPoint, GDBSession, GDBSessionStatus, StackFrame, Variable};
+use crate::models::{BreakPoint, GDBSession, GDBSessionStatus, Register, StackFrame, Variable};
 
 /// GDB Session Manager
 pub struct GDBManager {
@@ -147,18 +147,19 @@ impl GDBManager {
 
     /// Close session
     pub async fn close_session(&self, session_id: &str) -> AppResult<()> {
+        let _ = match self.send_command_with_timeout(session_id, &MiCommand::exit()).await {
+            Ok(result) => Some(result),
+            Err(e) => {
+                warn!("GDB exit command timed out, forcing process termination: {}", e.to_string());
+                // Ignore timeout error, continue to force terminate the process
+                None
+            }
+        };
+
         let mut sessions = self.sessions.lock().await;
+        let handle = sessions.remove(session_id);
 
-        if let Some(handle) = sessions.remove(session_id) {
-            let _ = match self.send_command_with_timeout(session_id, &MiCommand::exit()).await {
-                Ok(result) => Some(result),
-                Err(_) => {
-                    warn!("GDB exit command timed out, forcing process termination");
-                    // Ignore timeout error, continue to force terminate the process
-                    None
-                }
-            };
-
+        if let Some(handle) = handle {
             handle.oob_handle.abort();
             // Terminate process
             let mut process = handle.gdb.process.lock().await;
@@ -313,14 +314,17 @@ impl GDBManager {
     }
 
     /// Get registers
-    pub async fn get_registers(&self, session_id: &str) -> AppResult<Vec<Variable>> {
+    pub async fn get_registers(&self, session_id: &str) -> AppResult<Vec<Register>> {
         let command = MiCommand::data_list_register_values(RegisterFormat::Hex, None);
         let response = self.send_command_with_timeout(session_id, &command).await?;
 
-        // Parse variable information (simplified)
-        let variables = Vec::new(); // Actually needs to parse response
-
-        Ok(variables)
+        Ok(serde_json::from_value(
+            response
+                .results
+                .get("register-values")
+                .ok_or(AppError::NotFound("expect register-values".to_string()))?
+                .to_owned(),
+        )?)
     }
 
     /// Continue execution
