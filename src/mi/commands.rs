@@ -1,10 +1,15 @@
 use std::ffi::OsString;
 use std::fmt;
 use std::io::Error;
+use std::num::ParseIntError;
 use std::path::Path;
+use std::str::FromStr;
 
+use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 use tracing::info;
+
+use crate::error::AppError;
 
 #[derive(Debug, Clone, Default)]
 pub struct MiCommand {
@@ -26,30 +31,61 @@ pub enum WatchMode {
     Access,
 }
 
+/// Register format
+pub enum RegisterFormat {
+    Binary,
+    Hex,
+    Decimal,
+    Octal,
+    Raw,
+    Natural,
+}
+
+impl FromStr for RegisterFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "b" => RegisterFormat::Binary,
+            "x" => RegisterFormat::Hex,
+            "d" => RegisterFormat::Decimal,
+            "o" => RegisterFormat::Octal,
+            "r" => RegisterFormat::Raw,
+            "N" => RegisterFormat::Natural,
+            _ => return Err(format!("Invalid register format: {}", s)),
+        })
+    }
+}
+
+impl fmt::Display for RegisterFormat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
 pub enum BreakPointLocation<'a> {
     Address(usize),
     Function(&'a Path, &'a str),
     Line(&'a Path, usize),
 }
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
 pub struct BreakPointNumber {
     pub major: usize,
     pub minor: Option<usize>,
 }
 
-impl std::str::FromStr for BreakPointNumber {
-    type Err = String;
+impl FromStr for BreakPointNumber {
+    type Err = AppError;
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some(dot_pos) = s.find('.') {
-            let major = s[..dot_pos].parse::<usize>().map_err(|e| e.to_string())?;
-            let minor = s[dot_pos + 1..].parse::<usize>().map_err(|e| e.to_string())?;
-            Ok(BreakPointNumber { major, minor: Some(minor) })
+            Ok(BreakPointNumber {
+                major: s[..dot_pos].parse::<usize>()?,
+                minor: Some(s[dot_pos + 1..].parse::<usize>()?),
+            })
         } else {
-            match s.parse::<usize>() {
-                Ok(val) => Ok(BreakPointNumber { major: val, minor: None }),
-                Err(e) => Err(e.to_string()),
-            }
+            Ok(BreakPointNumber { major: s.parse::<usize>()?, minor: None })
         }
     }
 }
@@ -213,13 +249,16 @@ impl MiCommand {
         }
     }
 
-    pub fn delete_breakpoints(breakpoint_numbers: Vec<OsString>) -> MiCommand {
-        //let options = options: breakpoint_numbers.map(|n| format!("{} ", n)).collect(),
+    pub fn delete_breakpoints(breakpoint_numbers: Vec<BreakPointNumber>) -> MiCommand {
         //GDB is broken: see http://sourceware-org.1504.n7.nabble.com/Bug-breakpoints-20133-New-unable-to-delete-a-sub-breakpoint-td396197.html
         let mut options = breakpoint_numbers;
-        options.sort();
+        options.sort_by_key(|n| n.major);
         options.dedup();
-        MiCommand { operation: "break-delete", options: Some(options), parameters: None }
+        MiCommand {
+            operation: "break-delete",
+            options: Some(options.iter().map(|n| n.to_string().into()).collect()),
+            parameters: None,
+        }
     }
 
     pub fn breakpoints_list() -> MiCommand {
@@ -390,6 +429,7 @@ impl MiCommand {
             ]),
         }
     }
+
     pub fn var_delete(name: impl Into<OsString>, delete_children: bool) -> MiCommand {
         let mut parameters = vec![];
         if delete_children {
@@ -398,6 +438,7 @@ impl MiCommand {
         parameters.push(name.into());
         MiCommand { operation: "var-delete", options: None, parameters: Some(parameters) }
     }
+
     pub fn var_list_children(
         name: impl Into<OsString>,
         print_values: bool,
@@ -416,6 +457,37 @@ impl MiCommand {
             params.push(OsString::from(from_to.end.to_string()));
         }
         cmd
+    }
+
+    pub fn data_list_register_names(reg_no: Option<usize>) -> MiCommand {
+        MiCommand {
+            operation: "data-list-register-names",
+            options: if let Some(reg_no) = reg_no {
+                Some(vec![reg_no.to_string().into()])
+            } else {
+                None
+            },
+            parameters: None,
+        }
+    }
+
+    /// fmt: "x": hex, "d": decimal, "o": octal, "r": raw, "N": natural
+    pub fn data_list_register_values(fmt: RegisterFormat, reg_no: Option<usize>) -> MiCommand {
+        MiCommand {
+            operation: "data-list-register-values",
+            options: if let Some(reg_no) = reg_no {
+                Some(vec![fmt.to_string().into(), reg_no.to_string().into()])
+            } else {
+                Some(vec![fmt.to_string().into()])
+            },
+            parameters: None,
+        }
+    }
+
+    /// List registers that have changed since the last stop.
+    #[allow(dead_code)]
+    pub fn data_list_changed_registers() -> MiCommand {
+        MiCommand { operation: "data-list-changed-registers", ..Default::default() }
     }
 
     pub fn empty() -> MiCommand {

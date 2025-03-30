@@ -16,7 +16,6 @@ pub enum AppError {
     GDBQuit,
 
     #[error("Parse error: {0}")]
-    #[allow(dead_code)]
     ParseError(String),
 
     #[error("IO error: {0}")]
@@ -27,6 +26,9 @@ pub enum AppError {
 
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
+
+    #[error("Parse int error: {0}")]
+    ParseIntError(#[from] std::num::ParseIntError),
 }
 
 /// Application result type

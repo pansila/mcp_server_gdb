@@ -79,13 +79,13 @@ pub async fn create_session_tool(
 )]
 pub async fn get_session_tool(session_id: String) -> Result<ToolResponseContent> {
     let session = GDB_MANAGER.get_session(&session_id).await?;
-    Ok(tool_text_content!(format!("Session: {:?}", session)))
+    Ok(tool_text_content!(format!("Session: {}", serde_json::to_string(&session)?)))
 }
 
 #[tool(name = "get_all_sessions", description = "Get all GDB debugging sessions", params())]
 pub async fn get_all_sessions_tool() -> Result<ToolResponseContent> {
     let sessions = GDB_MANAGER.get_all_sessions().await?;
-    Ok(tool_text_content!(format!("Sessions: {:?}", sessions)))
+    Ok(tool_text_content!(format!("Sessions: {}", serde_json::to_string(&sessions)?)))
 }
 
 #[tool(
@@ -125,7 +125,7 @@ pub async fn stop_debugging_tool(session_id: String) -> Result<ToolResponseConte
 )]
 pub async fn get_breakpoints_tool(session_id: String) -> Result<ToolResponseContent> {
     let breakpoints = GDB_MANAGER.get_breakpoints(&session_id).await?;
-    Ok(tool_text_content!(format!("Breakpoints: {:?}", breakpoints)))
+    Ok(tool_text_content!(format!("Breakpoints: {}", serde_json::to_string(&breakpoints)?)))
 }
 
 #[tool(
@@ -143,7 +143,7 @@ pub async fn set_breakpoint_tool(
     line: usize,
 ) -> Result<ToolResponseContent> {
     let breakpoint = GDB_MANAGER.set_breakpoint(&session_id, &PathBuf::from(file), line).await?;
-    Ok(tool_text_content!(format!("Set breakpoint: {:?}", breakpoint)))
+    Ok(tool_text_content!(format!("Set breakpoint: {}", serde_json::to_string(&breakpoint)?)))
 }
 
 #[tool(
@@ -158,8 +158,8 @@ pub async fn delete_breakpoint_tool(
     session_id: String,
     breakpoints: String,
 ) -> Result<ToolResponseContent> {
-    let ret = GDB_MANAGER.delete_breakpoint(&session_id, &breakpoints).await?;
-    Ok(tool_text_content!(format!("Deleted breakpoint: {}", ret)))
+    GDB_MANAGER.delete_breakpoint(&session_id, &breakpoints).await?;
+    Ok(tool_text_content!("Breakpoints deleted".to_string()))
 }
 
 #[tool(
@@ -169,7 +169,7 @@ pub async fn delete_breakpoint_tool(
 )]
 pub async fn get_stack_frames_tool(session_id: String) -> Result<ToolResponseContent> {
     let frames = GDB_MANAGER.get_stack_frames(&session_id).await?;
-    Ok(tool_text_content!(format!("Stack frames: {:?}", frames)))
+    Ok(tool_text_content!(format!("Stack frames: {}", serde_json::to_string(&frames)?)))
 }
 
 #[tool(
@@ -182,7 +182,17 @@ pub async fn get_local_variables_tool(
     frame_id: usize,
 ) -> Result<ToolResponseContent> {
     let variables = GDB_MANAGER.get_local_variables(&session_id, frame_id).await?;
-    Ok(tool_text_content!(format!("Local variables: {:?}", variables)))
+    Ok(tool_text_content!(format!("Local variables: {}", serde_json::to_string(&variables)?)))
+}
+
+#[tool(
+    name = "get_registers",
+    description = "Get registers in the current GDB session",
+    params(session_id = "The ID of the GDB session")
+)]
+pub async fn get_registers_tool(session_id: String) -> Result<ToolResponseContent> {
+    let registers = GDB_MANAGER.get_registers(&session_id).await?;
+    Ok(tool_text_content!(format!("Registers: {}", serde_json::to_string(&registers)?)))
 }
 
 #[tool(
