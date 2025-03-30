@@ -479,7 +479,7 @@ mod test {
         let output = match Output::parse(
             "*stopped,reason=\"breakpoint-hit\",disp=\"keep\",bkptno=\"1\",frame={addr=\"0x000055555557003f\",\
             func=\"test_app::main::{async_block#0}\",args=[],file=\"src/bin/test_app.rs\",\
-            fullname=\"/mcp_server_gdb/src/bin/test_app.rs\",line=\"5\",arch=\"i386:x86-64\"},\
+            fullname=\"mcp_server_gdb/src/bin/test_app.rs\",line=\"5\",arch=\"i386:x86-64\"},\
             thread-id=\"1\",stopped-threads=\"all\",core=\"6\"\n",
         ) {
             Ok(output) => output,
@@ -513,7 +513,7 @@ mod test {
                     );
                     assert_eq!(
                         frame.get("fullname"),
-                        Some(&Value::String("/mcp_server_gdb/src/bin/test_app.rs".to_string()))
+                        Some(&Value::String("mcp_server_gdb/src/bin/test_app.rs".to_string()))
                     );
                     assert_eq!(frame.get("line"), Some(&Value::String("5".to_string())));
                     assert_eq!(frame.get("arch"), Some(&Value::String("i386:x86-64".to_string())));
@@ -526,6 +526,44 @@ mod test {
             } else {
                 panic!("output is not a out of band record");
             }
+        }
+    }
+
+    #[test]
+    fn test_get_breakpoints() {
+        let output = match Output::parse(
+            "^done,BreakpointTable={nr_rows=\"2\",nr_cols=\"6\",hdr=[\
+            {width=\"7\",alignment=\"-1\",col_name=\"number\",colhdr=\"Num\"},\
+            {width=\"14\",alignment=\"-1\",col_name=\"type\",colhdr=\"Type\"},\
+            {width=\"4\",alignment=\"-1\",col_name=\"disp\",colhdr=\"Disp\"},\
+            {width=\"3\",alignment=\"-1\",col_name=\"enabled\",colhdr=\"Enb\"},\
+            {width=\"18\",alignment=\"-1\",col_name=\"addr\",colhdr=\"Address\"},\
+            {width=\"40\",alignment=\"2\",col_name=\"what\",colhdr=\"What\"}],\
+            body=[\
+            bkpt={number=\"2\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"0x00000000000215bf\",\
+                func=\"test_app::main::{async_block#0}\",file=\"src/bin/test_app.rs\",fullname=\"mcp_server_gdb/src/bin/test_app.rs\",\
+                line=\"5\",thread-groups=[\"i1\"],times=\"0\",original-location=\"test_app.rs:5\"},\
+            bkpt={number=\"3\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"<MULTIPLE>\",times=\"0\",original-location=\"test_app.rs:6\",\
+                locations=[\
+                {number=\"3.1\",enabled=\"y\",addr=\"0x000000000001bcec\",func=\"test_app::main\",file=\"src/bin/test_app.rs\",fullname=\"mcp_server_gdb/src/bin/test_app.rs\",line=\"6\",thread-groups=[\"i1\"]},\
+                {number=\"3.2\",enabled=\"y\",addr=\"0x0000000000021618\",func=\"test_app::main::{async_block#0}\",file=\"src/bin/test_app.rs\",fullname=\"mcp_server_gdb/src/bin/test_app.rs\",line=\"6\",thread-groups=[\"i1\"]}]}]}\n"
+        ) {
+            Ok(output) => output,
+            Err(e) => {
+                panic!("parse output failed: {}", e);
+            }
+        };
+        if let Output::Result(result) = output {
+            assert_eq!(result.token, None);
+            assert_eq!(result.class, ResultClass::Done);
+            if let Some(bkpt) = result.results.get("BreakpointTable") {
+                assert_eq!(bkpt["nr_rows"], Value::String("2".to_string()));
+                assert_eq!(bkpt["nr_cols"], Value::String("6".to_string()));
+            } else {
+                panic!("BreakpointTable is not found");
+            }
+        } else {
+            panic!("output is not a result record");
         }
     }
 }

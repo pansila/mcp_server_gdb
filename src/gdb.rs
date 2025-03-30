@@ -1,25 +1,24 @@
-use serde_json::json;
 use std::{
     collections::HashMap,
     ffi::OsString,
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::{io::AsyncWriteExt, sync::Mutex};
+use tokio::sync::Mutex;
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 use crate::mi::{
     self, ExecuteError, GDB, GDBBuilder,
-    commands::{BreakPointLocation, BreakPointNumber, MiCommand},
+    commands::{BreakPointLocation, BreakPointNumber, MiCommand, RegisterFormat},
     output::{BreakPointEvent, OutOfBandRecord, ResultClass, ResultRecord},
 };
 use crate::{
     TRANSPORT,
     config::Config,
     error::{AppError, AppResult},
-    models::{Breakpoint, GDBSession, GDBSessionStatus, StackFrame, Variable},
+    models::{BreakPoint, GDBSession, GDBSessionStatus, StackFrame, Variable},
 };
 
 /// GDB Session Manager
@@ -197,7 +196,7 @@ impl GDBManager {
         &self,
         session_id: &str,
         command: &MiCommand,
-    ) -> AppResult<String> {
+    ) -> AppResult<ResultRecord> {
         let command_timeout = self.config.command_timeout;
         match tokio::time::timeout(
             Duration::from_secs(command_timeout),
@@ -205,7 +204,7 @@ impl GDBManager {
         )
         .await
         {
-            Ok(Ok(result)) => Ok(result.results.to_string()),
+            Ok(Ok(result)) => Ok(result),
             Ok(Err(e)) => Err(e),
             Err(_) => Err(AppError::GDBTimeout),
         }
@@ -221,7 +220,7 @@ impl GDBManager {
             handle.info.status = GDBSessionStatus::Running;
         }
 
-        Ok(response)
+        Ok(response.results.to_string())
     }
 
     /// Stop debugging
@@ -235,23 +234,22 @@ impl GDBManager {
             handle.info.status = GDBSessionStatus::Stopped;
         }
 
-        Ok(response)
+        Ok(response.results.to_string())
     }
 
     /// Get breakpoint list
-    pub async fn get_breakpoints(&self, session_id: &str) -> AppResult<Vec<Breakpoint>> {
+    pub async fn get_breakpoints(&self, session_id: &str) -> AppResult<Vec<BreakPoint>> {
         let response =
             self.send_command_with_timeout(session_id, &MiCommand::breakpoints_list()).await?;
 
-        // TODO: parse breakpoint table to a MD table
-
-        // Parse breakpoint information (simplified version, actually needs more complex parsing)
-        let breakpoints = Vec::new();
-
-        // There should be more complex parsing logic here, this is just a simplified example
-        // Actual implementation needs to parse correctly according to GDB/MI output format
-
-        Ok(breakpoints)
+        let table = response
+            .results
+            .get("BreakpointTable")
+            .ok_or(AppError::NotFound("BreakpointTable not found".to_string()))?;
+        let body = table.get("body").ok_or(AppError::NotFound("body not found".to_string()))?;
+        let bp_list =
+            body.as_array().ok_or(AppError::ParseError("body is not an array".to_string()))?;
+        bp_list.into_iter().map(|bp| BreakPoint::try_from(bp)).collect()
     }
 
     /// Set breakpoint
@@ -260,33 +258,27 @@ impl GDBManager {
         session_id: &str,
         file: &Path,
         line: usize,
-    ) -> AppResult<Breakpoint> {
+    ) -> AppResult<BreakPoint> {
         let command = MiCommand::insert_breakpoint(BreakPointLocation::Line(file, line));
         let response = self.send_command_with_timeout(session_id, &command).await?;
 
-        // Parse breakpoint ID (simplified)
-        let breakpoint_id = Uuid::new_v4().to_string(); // Should actually be extracted from response
-
-        Ok(Breakpoint {
-            id: breakpoint_id,
-            file: file.to_string_lossy().to_string(),
-            line,
-            enabled: true,
-        })
+        BreakPoint::try_from(&response.results)
     }
 
     /// Delete breakpoint
-    pub async fn delete_breakpoint(
-        &self,
-        session_id: &str,
-        breakpoints: &str,
-    ) -> AppResult<String> {
+    pub async fn delete_breakpoint(&self, session_id: &str, breakpoints: &str) -> AppResult<()> {
         let command = MiCommand::delete_breakpoints(
-            breakpoints.split(',').map(|num| num.to_string().into()).collect(),
+            breakpoints
+                .split(',')
+                .map(|num| num.parse::<BreakPointNumber>())
+                .collect::<Result<Vec<_>, _>>()?,
         );
         let response = self.send_command_with_timeout(session_id, &command).await?;
+        if response.class != ResultClass::Done {
+            return Err(AppError::GDBError(response.results.to_string()));
+        }
 
-        Ok(response)
+        Ok(())
     }
 
     /// Get stack frames
@@ -315,6 +307,17 @@ impl GDBManager {
         Ok(variables)
     }
 
+    /// Get registers
+    pub async fn get_registers(&self, session_id: &str) -> AppResult<Vec<Variable>> {
+        let command = MiCommand::data_list_register_values(RegisterFormat::Hex, None);
+        let response = self.send_command_with_timeout(session_id, &command).await?;
+
+        // Parse variable information (simplified)
+        let variables = Vec::new(); // Actually needs to parse response
+
+        Ok(variables)
+    }
+
     /// Continue execution
     pub async fn continue_execution(&self, session_id: &str) -> AppResult<String> {
         let response =
@@ -326,20 +329,20 @@ impl GDBManager {
             handle.info.status = GDBSessionStatus::Running;
         }
 
-        Ok(response)
+        Ok(response.results.to_string())
     }
 
     /// Step execution
     pub async fn step_execution(&self, session_id: &str) -> AppResult<String> {
         let response = self.send_command_with_timeout(session_id, &MiCommand::exec_step()).await?;
 
-        Ok(response)
+        Ok(response.results.to_string())
     }
 
     /// Next execution
     pub async fn next_execution(&self, session_id: &str) -> AppResult<String> {
         let response = self.send_command_with_timeout(session_id, &MiCommand::exec_next()).await?;
 
-        Ok(response)
+        Ok(response.results.to_string())
     }
 }
