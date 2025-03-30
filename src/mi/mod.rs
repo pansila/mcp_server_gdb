@@ -8,14 +8,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use anyhow::Result;
+use output::process_output;
 use tokio::io::BufReader;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, Sender};
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::error::{AppError, AppResult};
-use output::process_output;
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct GDB {
@@ -33,9 +33,9 @@ pub enum ExecuteError {
     Quit,
 }
 
-/// A builder struct for configuring and launching GDB with various command line options.
-/// This struct provides a fluent interface for setting up GDB with different parameters
-/// before spawning the debugger process.
+/// A builder struct for configuring and launching GDB with various command line
+/// options. This struct provides a fluent interface for setting up GDB with
+/// different parameters before spawning the debugger process.
 pub struct GDBBuilder {
     /// Path to the GDB executable
     pub gdb_path: PathBuf,

@@ -1,15 +1,14 @@
 use std::ffi::OsString;
 use std::fmt;
 use std::io::Error;
-use std::num::ParseIntError;
 use std::path::Path;
 use std::str::FromStr;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize, de};
 use tokio::io::AsyncWriteExt;
 use tracing::info;
 
-use crate::error::AppError;
+use crate::models::PrintValue;
 
 #[derive(Debug, Clone, Default)]
 pub struct MiCommand {
@@ -21,8 +20,10 @@ pub struct MiCommand {
 pub enum DisassembleMode {
     DisassemblyOnly = 0,
     DisassemblyWithRawOpcodes = 2,
-    MixedSourceAndDisassembly = 1, // deprecated and 4 would be preferred, but might not be available in older gdb(mi) versions
-    MixedSourceAndDisassemblyWithRawOpcodes = 3, // deprecated and 5 would be preferred, same as above
+    MixedSourceAndDisassembly = 1, /* deprecated and 4 would be preferred, but might not be
+                                    * available in older gdb(mi) versions */
+    MixedSourceAndDisassemblyWithRawOpcodes = 3, /* deprecated and 5 would be preferred, same
+                                                  * as above */
 }
 
 pub enum WatchMode {
@@ -75,17 +76,22 @@ pub struct BreakPointNumber {
     pub minor: Option<usize>,
 }
 
-impl FromStr for BreakPointNumber {
-    type Err = AppError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl<'de> Deserialize<'de> for BreakPointNumber {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s: String = serde::Deserialize::deserialize(deserializer)?;
         if let Some(dot_pos) = s.find('.') {
             Ok(BreakPointNumber {
-                major: s[..dot_pos].parse::<usize>()?,
-                minor: Some(s[dot_pos + 1..].parse::<usize>()?),
+                major: s[..dot_pos].parse::<usize>().map_err(de::Error::custom)?,
+                minor: Some(s[dot_pos + 1..].parse::<usize>().map_err(de::Error::custom)?),
             })
         } else {
-            Ok(BreakPointNumber { major: s.parse::<usize>()?, minor: None })
+            Ok(BreakPointNumber {
+                major: s.parse::<usize>().map_err(de::Error::custom)?,
+                minor: None,
+            })
         }
     }
 }
@@ -204,7 +210,7 @@ impl MiCommand {
     pub fn data_evaluate_expression(expression: String) -> MiCommand {
         MiCommand {
             operation: "data-evaluate-expression",
-            options: Some(vec![OsString::from(format!("\"{}\"", expression))]), //TODO: maybe we need to quote existing " in expression. Is this even possible?
+            options: Some(vec![OsString::from(format!("\"{}\"", expression))]), /* TODO: maybe we need to quote existing " in expression. Is this even possible? */
             parameters: None,
         }
     }
@@ -300,9 +306,10 @@ impl MiCommand {
         MiCommand { operation: "exec-next", ..Default::default() }
     }
 
-    // Warning: This cannot be used to pass special characters like \n to gdb because
-    // (unlike it is said in the spec) there is apparently no way to pass \n unescaped
-    // to gdb, and for "exec-arguments" gdb somehow does not unescape these chars...
+    // Warning: This cannot be used to pass special characters like \n to gdb
+    // because (unlike it is said in the spec) there is apparently no way to
+    // pass \n unescaped to gdb, and for "exec-arguments" gdb somehow does not
+    // unescape these chars...
     pub fn exec_arguments(args: Vec<OsString>) -> MiCommand {
         MiCommand { operation: "exec-arguments", options: Some(args), parameters: None }
     }
@@ -338,6 +345,7 @@ impl MiCommand {
     pub fn stack_list_variables(
         thread_number: Option<usize>,
         frame_number: Option<usize>,
+        print_values: Option<PrintValue>,
     ) -> MiCommand {
         let mut parameters = vec![];
         if let Some(thread_number) = thread_number {
@@ -348,7 +356,11 @@ impl MiCommand {
             parameters.push("--frame".into());
             parameters.push(frame_number.to_string().into());
         }
-        parameters.push("--simple-values".into()); //TODO: make configurable if required.
+        if let Some(values) = print_values {
+            parameters.push(values.to_string().into());
+        } else {
+            parameters.push("--simple-values".into());
+        }
         MiCommand { operation: "stack-list-variables", options: None, parameters: Some(parameters) }
     }
 
@@ -415,9 +427,9 @@ impl MiCommand {
     }
 
     pub fn var_create(
-        name: Option<OsString>, /*none: generate name*/
+        name: Option<OsString>, /* none: generate name */
         expression: &str,
-        frame_addr: Option<u64>, /*none: current frame*/
+        frame_addr: Option<u64>, /* none: current frame */
     ) -> MiCommand {
         MiCommand {
             operation: "var-create",

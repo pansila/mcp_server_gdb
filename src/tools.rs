@@ -1,12 +1,13 @@
-use crate::gdb::GDBManager;
+use std::ffi::OsString;
+use std::path::PathBuf;
+use std::sync::{Arc, LazyLock};
+
 use anyhow::Result;
-use mcp_core::{tool_text_content, types::ToolResponseContent};
+use mcp_core::tool_text_content;
+use mcp_core::types::ToolResponseContent;
 use mcp_core_macros::tool;
-use std::{
-    ffi::OsString,
-    path::PathBuf,
-    sync::{Arc, LazyLock},
-};
+
+use crate::gdb::GDBManager;
 
 static GDB_MANAGER: LazyLock<Arc<GDBManager>> = LazyLock::new(|| Arc::new(GDBManager::new()));
 
@@ -175,11 +176,14 @@ pub async fn get_stack_frames_tool(session_id: String) -> Result<ToolResponseCon
 #[tool(
     name = "get_local_variables",
     description = "Get local variables in the current stack frame",
-    params(session_id = "The ID of the GDB session", frame_id = "The ID of the stack frame")
+    params(
+        session_id = "The ID of the GDB session",
+        frame_id = "The ID of the stack frame, defaults to 0, the topest frame"
+    )
 )]
 pub async fn get_local_variables_tool(
     session_id: String,
-    frame_id: usize,
+    frame_id: Option<usize>,
 ) -> Result<ToolResponseContent> {
     let variables = GDB_MANAGER.get_local_variables(&session_id, frame_id).await?;
     Ok(tool_text_content!(format!("Local variables: {}", serde_json::to_string(&variables)?)))
