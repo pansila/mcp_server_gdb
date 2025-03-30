@@ -2,7 +2,7 @@
 authors = ["Lix Zhou <xeontz@gmail.com>"]
 description = "A GDB/MI protocol server based on the MCP protocol, providing remote application debugging capabilities"
 name = "mcp-server-gdb"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "MIT"
 readme = "README.md"
