@@ -2,14 +2,14 @@ use std::any::Any;
 
 use anyhow::{Result, bail};
 use clap::{Parser, ValueEnum};
-use mcp_core::{
-    client::{Client, ClientBuilder},
-    transport::{ClientSseTransport, ClientSseTransportBuilder, ClientStdioTransport},
-    types::{ClientCapabilities, Implementation, ToolResponseContent},
-};
+use mcp_core::client::{Client, ClientBuilder};
+use mcp_core::transport::{ClientSseTransport, ClientSseTransportBuilder, ClientStdioTransport};
+use mcp_core::types::{ClientCapabilities, Implementation, ToolResponseContent};
 use serde_json::{Value, json};
 use tracing::{debug, info};
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum, Debug)]
 enum TransportType {
@@ -168,6 +168,16 @@ async fn main() -> Result<()> {
     )
     .await?;
     info!("Stack frames response: {:?}", frames_response);
+
+    let frames_response = call_tool(
+        &client,
+        "get_local_variables",
+        Some(json!({
+            "session_id": session_id
+        })),
+    )
+    .await?;
+    info!("Stack variables response: {:?}", frames_response);
 
     // Close session
     let close_response = call_tool(

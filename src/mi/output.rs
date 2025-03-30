@@ -1,7 +1,6 @@
 // use std::io::{BufRead, BufReader, Read};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 
 use anyhow::Result;
 use nom::branch::alt;
@@ -13,6 +12,7 @@ use nom::multi::{fold, many0, separated_list0};
 use nom::sequence::{delimited, preceded, separated_pair};
 use nom::{IResult, Parser};
 use serde_json::{Map, Value};
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tracing::{debug, error, info};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,7 +119,8 @@ pub async fn process_output<T: AsyncRead + Unpin>(
                     Output::Result(record) => {
                         match record.class {
                             ResultClass::Running => is_running.store(true, Ordering::SeqCst),
-                            //Apparently sometimes gdb first claims to be running, only to then stop again (without notifying the user)...
+                            //Apparently sometimes gdb first claims to be running, only to then
+                            // stop again (without notifying the user)...
                             ResultClass::Error => is_running.store(false, Ordering::SeqCst),
                             _ => {}
                         }
@@ -292,8 +293,8 @@ fn json_value(input: &str) -> IResult<&str, Value> {
     .parse(input)
 }
 
-// Don't even ask... Against its spec, gdb(mi) sometimes emits multiple values for a single tuple
-// in a comma separated list.
+// Don't even ask... Against its spec, gdb(mi) sometimes emits multiple values
+// for a single tuple in a comma separated list.
 fn buggy_gdb_list_in_result(input: &str) -> IResult<&str, Value> {
     map(separated_list0(tag(","), json_value), |mut values: Vec<Value>| {
         if values.len() == 1 {
@@ -364,9 +365,10 @@ fn async_class(input: &str) -> IResult<&str, AsyncClass> {
 
 /// \[token\] async-kind async-class ( "," result )* nl,
 /// where async-kind is one of: * (exec), + (status), = (notify),
-/// and async-class is one of: running, stopped, thread-created, thread-group-started, thread-exited, thread-group-exited,
-/// thread-selected, cmd-param-changed, library-loaded, breakpoint-created, breakpoint-deleted, breakpoint-modified, other
-/// and result is a json object
+/// and async-class is one of: running, stopped, thread-created,
+/// thread-group-started, thread-exited, thread-group-exited, thread-selected,
+/// cmd-param-changed, library-loaded, breakpoint-created, breakpoint-deleted,
+/// breakpoint-modified, other and result is a json object
 fn async_record(input: &str) -> IResult<&str, OutOfBandRecord> {
     map(
         (opt(token), async_kind, async_class, many0(preceded(char(','), key_value))),
@@ -546,7 +548,7 @@ mod test {
             bkpt={number=\"3\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"<MULTIPLE>\",times=\"0\",original-location=\"test_app.rs:6\",\
                 locations=[\
                 {number=\"3.1\",enabled=\"y\",addr=\"0x000000000001bcec\",func=\"test_app::main\",file=\"src/bin/test_app.rs\",fullname=\"mcp_server_gdb/src/bin/test_app.rs\",line=\"6\",thread-groups=[\"i1\"]},\
-                {number=\"3.2\",enabled=\"y\",addr=\"0x0000000000021618\",func=\"test_app::main::{async_block#0}\",file=\"src/bin/test_app.rs\",fullname=\"mcp_server_gdb/src/bin/test_app.rs\",line=\"6\",thread-groups=[\"i1\"]}]}]}\n"
+                {number=\"3.2\",enabled=\"y\",addr=\"0x0000000000021618\",func=\"test_app::main::{async_block#0}\",file=\"src/bin/test_app.rs\",fullname=\"mcp_server_gdb/src/bin/test_app.rs\",line=\"6\",thread-groups=[\"i1\"]}]}]}\n",
         ) {
             Ok(output) => output,
             Err(e) => {

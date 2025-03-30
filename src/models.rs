@@ -1,19 +1,15 @@
 use core::fmt;
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    ops::{Add, Sub},
-    path::PathBuf,
-    str::FromStr,
-};
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::ops::{Add, Sub};
+use std::path::PathBuf;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_with::{DisplayFromStr, serde_as};
 
-use crate::{
-    error::AppError,
-    mi::{commands::BreakPointNumber, output::ResultRecord},
-};
+use crate::error::AppError;
+use crate::mi::commands::BreakPointNumber;
 
 /// GDB session information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,31 +49,28 @@ pub struct CreateSessionRequest {
     pub executable_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SrcPosition {
-    pub file: PathBuf,
+    pub fullname: PathBuf,
+    #[serde_as(as = "DisplayFromStr")]
     pub line: usize,
 }
 
-impl SrcPosition {
-    pub const fn new(file: PathBuf, line: usize) -> Self {
-        SrcPosition { file, line }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
 pub struct Address(pub usize);
-impl FromStr for Address {
-    type Err = std::num::ParseIntError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        usize::from_str_radix(&s[2..], 16).map(Address)
+impl From<String> for Address {
+    fn from(s: String) -> Self {
+        let s = if s.starts_with("0x") { &s[2..] } else { &s };
+        Address(usize::from_str_radix(s, 16).unwrap_or(0))
     }
 }
 
-impl fmt::Display for Address {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "0x{:x}", self.0)
+impl From<Address> for String {
+    fn from(addr: Address) -> Self {
+        format!("0x{:x}", addr.0)
     }
 }
 
@@ -96,47 +89,29 @@ impl Sub<usize> for Address {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct BreakPoint {
-    pub number: BreakPointNumber,
-    pub address: Option<Address>,
-    pub enabled: bool,
-    pub src_pos: Option<SrcPosition>, // not present if debug information is missing!
-    pub r#type: String,
-    pub display: String,
+pub struct Enabled(bool);
+
+impl<'de> Deserialize<'de> for Enabled {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s: String = serde::Deserialize::deserialize(deserializer)?;
+        if s == "y" { Ok(Enabled(true)) } else { Ok(Enabled(false)) }
+    }
 }
 
-impl TryFrom<&Value> for BreakPoint {
-    type Error = AppError;
-
-    fn try_from(bkpt: &Value) -> Result<Self, Self::Error> {
-        let number = bkpt["number"]
-            .as_str()
-            .ok_or(AppError::ParseError("find bp number".to_string()))?
-            .parse::<BreakPointNumber>()
-            .map_err(|e| AppError::ParseError(e.to_string()))?;
-        let enabled =
-            bkpt["enabled"].as_str().ok_or(AppError::ParseError("find enabled".to_string()))?
-                == "y";
-        let address = bkpt["addr"].as_str().and_then(|addr| Address::from_str(addr).ok()); //addr may not be present or contain
-        let src_pos = {
-            let maybe_file = bkpt["fullname"].as_str();
-            let maybe_line = bkpt["line"]
-                .as_str()
-                .map(|l_nr| l_nr.parse::<usize>().map_err(|e| AppError::ParseError(e.to_string())));
-            if let (Some(file), Some(line)) = (maybe_file, maybe_line) {
-                Some(SrcPosition::new(PathBuf::from(file), line?))
-            } else {
-                None
-            }
-        };
-        let r#type =
-            bkpt["type"].as_str().ok_or(AppError::ParseError("find type".to_string()))?.to_string();
-        let display = bkpt["disp"]
-            .as_str()
-            .ok_or(AppError::ParseError("find display".to_string()))?
-            .to_string();
-        Ok(BreakPoint { number, address, enabled, src_pos, r#type, display })
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BreakPoint {
+    pub number: BreakPointNumber,
+    #[serde(rename = "addr")]
+    pub address: Option<Address>,
+    pub enabled: Enabled,
+    #[serde(flatten)]
+    pub src_pos: Option<SrcPosition>, // not present if debug information is missing!
+    pub r#type: String,
+    #[serde(rename = "disp")]
+    pub display: String,
 }
 
 pub struct BreakPointSet {
@@ -179,18 +154,55 @@ impl std::ops::Deref for BreakPointSet {
 }
 
 /// Stack frame information
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StackFrame {
     /// Frame level
+    #[serde_as(as = "DisplayFromStr")]
     pub level: u32,
     /// Function name
-    pub function: String,
+    pub func: String,
     /// File name
     pub file: Option<String>,
+    /// Full name of the file
+    pub fullname: Option<String>,
     /// Line number
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub line: Option<u32>,
     /// Address
-    pub address: String,
+    #[serde(rename = "addr")]
+    pub address: Option<Address>,
+    /// Arch
+    pub arch: Option<String>,
+}
+
+pub enum PrintValue {
+    /// print only the names of the variables, equivalent to "--no-values"
+    NoValues,
+    /// print also their values, equivalent to "--all-values"
+    AllValues,
+    /// print the name, type and value for simple data types, and the name and
+    /// type for arrays, structures and unions, equivalent to "--simple-values"
+    SimpleValues,
+}
+
+impl FromStr for PrintValue {
+    type Err = AppError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.parse::<usize>()? {
+            0 => Ok(PrintValue::NoValues),
+            1 => Ok(PrintValue::AllValues),
+            2 => Ok(PrintValue::SimpleValues),
+            _ => Err(AppError::InvalidArgument("only 0,1,2 are valid".to_string())),
+        }
+    }
+}
+
+impl Display for PrintValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
+    }
 }
 
 /// Variable information
@@ -198,8 +210,27 @@ pub struct StackFrame {
 pub struct Variable {
     /// Variable name
     pub name: String,
-    /// Variable value
-    pub value: String,
-    /// Variable type
-    pub type_name: Option<String>,
+    /// Variable type, only present if --all-values or --simple-values
+    pub r#type: Option<String>,
+    /// Variable value, only present if --simple-values
+    pub value: Option<String>,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_address() {
+        #[derive(Deserialize)]
+        struct Test {
+            addr: Address,
+            opt_addr: Option<Address>,
+        }
+        let test: Test =
+            serde_json::from_str("{\"addr\": \"0x1234abcd\", \"opt_addr\":\"0xABCD1234\"}")
+                .unwrap();
+        assert_eq!(test.addr, Address(0x1234abcd));
+        assert_eq!(test.opt_addr, Some(Address(0xabcd1234)));
+    }
 }

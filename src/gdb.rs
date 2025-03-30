@@ -1,25 +1,20 @@
-use std::{
-    collections::HashMap,
-    ffi::OsString,
-    path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
-use tokio::sync::Mutex;
-use tokio::{sync::mpsc, task::JoinHandle};
+use std::collections::HashMap;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use tokio::sync::{Mutex, mpsc};
+use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
 use uuid::Uuid;
 
-use crate::mi::{
-    self, ExecuteError, GDB, GDBBuilder,
-    commands::{BreakPointLocation, BreakPointNumber, MiCommand, RegisterFormat},
-    output::{BreakPointEvent, OutOfBandRecord, ResultClass, ResultRecord},
-};
-use crate::{
-    TRANSPORT,
-    config::Config,
-    error::{AppError, AppResult},
-    models::{BreakPoint, GDBSession, GDBSessionStatus, StackFrame, Variable},
-};
+use crate::TRANSPORT;
+use crate::config::Config;
+use crate::error::{AppError, AppResult};
+use crate::mi::commands::{BreakPointLocation, BreakPointNumber, MiCommand, RegisterFormat};
+use crate::mi::output::{OutOfBandRecord, ResultClass, ResultRecord};
+use crate::mi::{GDB, GDBBuilder};
+use crate::models::{BreakPoint, GDBSession, GDBSessionStatus, StackFrame, Variable};
 
 /// GDB Session Manager
 pub struct GDBManager {
@@ -90,7 +85,7 @@ impl GDBManager {
             loop {
                 match oob_sink.recv().await {
                     Some(record) => match record {
-                        OutOfBandRecord::AsyncRecord { token, kind, class, results } => {
+                        OutOfBandRecord::AsyncRecord { results, .. } => {
                             let transport = TRANSPORT.lock().await;
                             if let Some(transport) = transport.as_ref() {
                                 if let Err(e) = transport
@@ -104,7 +99,7 @@ impl GDBManager {
                                 break;
                             }
                         }
-                        OutOfBandRecord::StreamRecord { kind, data } => {
+                        OutOfBandRecord::StreamRecord { data, .. } => {
                             debug!("StreamRecord: {:?}", data);
                         }
                     },
@@ -247,9 +242,7 @@ impl GDBManager {
             .get("BreakpointTable")
             .ok_or(AppError::NotFound("BreakpointTable not found".to_string()))?;
         let body = table.get("body").ok_or(AppError::NotFound("body not found".to_string()))?;
-        let bp_list =
-            body.as_array().ok_or(AppError::ParseError("body is not an array".to_string()))?;
-        bp_list.into_iter().map(|bp| BreakPoint::try_from(bp)).collect()
+        Ok(serde_json::from_value(body.to_owned())?)
     }
 
     /// Set breakpoint
@@ -262,7 +255,13 @@ impl GDBManager {
         let command = MiCommand::insert_breakpoint(BreakPointLocation::Line(file, line));
         let response = self.send_command_with_timeout(session_id, &command).await?;
 
-        BreakPoint::try_from(&response.results)
+        Ok(serde_json::from_value(
+            response
+                .results
+                .get("bkpt")
+                .ok_or(AppError::NotFound("bkpt not found in the result".to_string()))?
+                .to_owned(),
+        )?)
     }
 
     /// Delete breakpoint
@@ -270,7 +269,7 @@ impl GDBManager {
         let command = MiCommand::delete_breakpoints(
             breakpoints
                 .split(',')
-                .map(|num| num.parse::<BreakPointNumber>())
+                .map(|num| serde_json::from_str::<BreakPointNumber>(num))
                 .collect::<Result<Vec<_>, _>>()?,
         );
         let response = self.send_command_with_timeout(session_id, &command).await?;
@@ -286,25 +285,31 @@ impl GDBManager {
         let command = MiCommand::stack_list_frames(None, None);
         let response = self.send_command_with_timeout(session_id, &command).await?;
 
-        // Parse stack frame information (simplified)
-        let frames = Vec::new(); // Actually needs to parse response
-
-        Ok(frames)
+        Ok(serde_json::from_value(
+            response
+                .results
+                .get("stack")
+                .ok_or(AppError::NotFound("stack not found".to_string()))?
+                .to_owned(),
+        )?)
     }
 
     /// Get local variables
     pub async fn get_local_variables(
         &self,
         session_id: &str,
-        frame_id: usize,
+        frame_id: Option<usize>,
     ) -> AppResult<Vec<Variable>> {
-        let command = MiCommand::stack_list_variables(None, Some(frame_id));
+        let command = MiCommand::stack_list_variables(None, frame_id, None);
         let response = self.send_command_with_timeout(session_id, &command).await?;
 
-        // Parse variable information (simplified)
-        let variables = Vec::new(); // Actually needs to parse response
-
-        Ok(variables)
+        Ok(serde_json::from_value(
+            response
+                .results
+                .get("variables")
+                .ok_or(AppError::NotFound("expect variables in result".to_string()))?
+                .to_owned(),
+        )?)
     }
 
     /// Get registers

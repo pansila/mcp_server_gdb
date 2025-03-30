@@ -29,6 +29,9 @@ pub enum AppError {
 
     #[error("Parse int error: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
+
+    #[error("Parse Json error: {0}")]
+    ParseJsonError(#[from] serde_json::error::Error),
 }
 
 /// Application result type
