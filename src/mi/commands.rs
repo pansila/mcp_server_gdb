@@ -60,7 +60,14 @@ impl FromStr for RegisterFormat {
 
 impl fmt::Display for RegisterFormat {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        match self {
+            RegisterFormat::Binary => write!(f, "b"),
+            RegisterFormat::Hex => write!(f, "x"),
+            RegisterFormat::Decimal => write!(f, "d"),
+            RegisterFormat::Octal => write!(f, "o"),
+            RegisterFormat::Raw => write!(f, "r"),
+            RegisterFormat::Natural => write!(f, "N"),
+        }
     }
 }
 
