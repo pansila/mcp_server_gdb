@@ -192,10 +192,32 @@ pub async fn get_local_variables_tool(
 #[tool(
     name = "get_registers",
     description = "Get registers in the current GDB session",
-    params(session_id = "The ID of the GDB session")
+    params(
+        session_id = "The ID of the GDB session",
+        reg_list = "The number of the registers to get, separated by commas if more than one",
+    )
 )]
-pub async fn get_registers_tool(session_id: String) -> Result<ToolResponseContent> {
-    let registers = GDB_MANAGER.get_registers(&session_id).await?;
+pub async fn get_registers_tool(
+    session_id: String,
+    reg_list: Option<String>,
+) -> Result<ToolResponseContent> {
+    let registers = GDB_MANAGER.get_registers(&session_id, reg_list).await?;
+    Ok(tool_text_content!(format!("Registers: {}", serde_json::to_string(&registers)?)))
+}
+
+#[tool(
+    name = "get_register_names",
+    description = "Get registers in the current GDB session",
+    params(
+        session_id = "The ID of the GDB session",
+        reg_list = "The number of the registers to get, separated by commas if more than one",
+    )
+)]
+pub async fn get_register_names_tool(
+    session_id: String,
+    reg_list: Option<String>,
+) -> Result<ToolResponseContent> {
+    let registers = GDB_MANAGER.get_register_names(&session_id, reg_list).await?;
     Ok(tool_text_content!(format!("Registers: {}", serde_json::to_string(&registers)?)))
 }
 

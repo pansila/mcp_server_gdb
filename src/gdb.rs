@@ -3,6 +3,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use serde_json::Value;
 use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
@@ -314,8 +315,54 @@ impl GDBManager {
     }
 
     /// Get registers
-    pub async fn get_registers(&self, session_id: &str) -> AppResult<Vec<Register>> {
-        let command = MiCommand::data_list_register_values(RegisterFormat::Hex, None);
+    pub async fn get_registers(
+        &self,
+        session_id: &str,
+        reg_list: Option<String>,
+    ) -> AppResult<Vec<Register>> {
+        let reg_list = reg_list
+            .map(|s| s.split(',').map(|num| num.parse::<usize>()).collect::<Result<Vec<_>, _>>())
+            .transpose()?;
+        let command = MiCommand::data_list_register_names(reg_list.clone());
+        let response = self.send_command_with_timeout(session_id, &command).await?;
+        let names: Vec<String> = serde_json::from_value(
+            response
+                .results
+                .get("register-names")
+                .ok_or(AppError::NotFound("register-names not found".to_string()))?
+                .to_owned(),
+        )?;
+
+        let command = MiCommand::data_list_register_values(RegisterFormat::Hex, reg_list);
+        let response = self.send_command_with_timeout(session_id, &command).await?;
+
+        let registers: Vec<Register> = serde_json::from_value(
+            response
+                .results
+                .get("register-values")
+                .ok_or(AppError::NotFound("expect register-values".to_string()))?
+                .to_owned(),
+        )?;
+        Ok(registers
+            .into_iter()
+            .zip(names.into_iter())
+            .map(|(mut r, n)| {
+                r.name = Some(n);
+                r
+            })
+            .collect::<_>())
+    }
+
+    /// Get register names
+    pub async fn get_register_names(
+        &self,
+        session_id: &str,
+        reg_list: Option<String>,
+    ) -> AppResult<Vec<Register>> {
+        let reg_list = reg_list
+            .map(|s| s.split(',').map(|num| num.parse::<usize>()).collect::<Result<Vec<_>, _>>())
+            .transpose()?;
+        let command = MiCommand::data_list_register_names(reg_list);
         let response = self.send_command_with_timeout(session_id, &command).await?;
 
         Ok(serde_json::from_value(

@@ -478,11 +478,11 @@ impl MiCommand {
         cmd
     }
 
-    pub fn data_list_register_names(reg_no: Option<usize>) -> MiCommand {
+    pub fn data_list_register_names(reg_list: Option<Vec<usize>>) -> MiCommand {
         MiCommand {
             operation: "data-list-register-names",
-            options: if let Some(reg_no) = reg_no {
-                Some(vec![reg_no.to_string().into()])
+            options: if let Some(list) = reg_list {
+                Some(list.iter().map(|x| x.to_string().into()).collect())
             } else {
                 None
             },
@@ -491,11 +491,19 @@ impl MiCommand {
     }
 
     /// fmt: "x": hex, "d": decimal, "o": octal, "r": raw, "N": natural
-    pub fn data_list_register_values(fmt: RegisterFormat, reg_no: Option<usize>) -> MiCommand {
+    pub fn data_list_register_values(
+        fmt: RegisterFormat,
+        reg_list: Option<Vec<usize>>,
+    ) -> MiCommand {
         MiCommand {
             operation: "data-list-register-values",
-            options: if let Some(reg_no) = reg_no {
-                Some(vec![fmt.to_string().into(), reg_no.to_string().into()])
+            options: if let Some(list) = &reg_list {
+                Some(
+                    vec![fmt.to_string().into()]
+                        .into_iter()
+                        .chain(list.iter().map(|x| x.to_string().into()))
+                        .collect(),
+                )
             } else {
                 Some(vec![fmt.to_string().into()])
             },
