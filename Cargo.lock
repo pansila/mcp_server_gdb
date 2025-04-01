@@ -1431,7 +1431,6 @@ dependencies = [
  "nix",
  "nom 8.0.0",
  "openssl",
- "regex",
  "schemars",
  "serde",
  "serde_json",

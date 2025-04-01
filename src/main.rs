@@ -122,4 +122,5 @@ fn register_tools(builder: ServerProtocolBuilder) -> ServerProtocolBuilder {
         .register_tool(tools::StepExecutionTool::tool(), tools::StepExecutionTool::call())
         .register_tool(tools::NextExecutionTool::tool(), tools::NextExecutionTool::call())
         .register_tool(tools::GetRegistersTool::tool(), tools::GetRegistersTool::call())
+        .register_tool(tools::GetRegisterNamesTool::tool(), tools::GetRegisterNamesTool::call())
 }

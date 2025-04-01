@@ -271,6 +271,8 @@ pub enum RegisterRaw {
 #[skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Register {
+    // Not exist in the register value output but can be amended afterwards
+    pub name: Option<String>,
     #[serde_as(as = "DisplayFromStr")]
     pub number: usize,
     pub value: Option<RegisterRaw>,
