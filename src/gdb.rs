@@ -266,10 +266,14 @@ impl GDBManager {
     }
 
     /// Delete breakpoint
-    pub async fn delete_breakpoint(&self, session_id: &str, breakpoints: &str) -> AppResult<()> {
+    pub async fn delete_breakpoint(
+        &self,
+        session_id: &str,
+        breakpoints: Vec<String>,
+    ) -> AppResult<()> {
         let command = MiCommand::delete_breakpoints(
             breakpoints
-                .split(',')
+                .iter()
                 .map(|num| serde_json::from_str::<BreakPointNumber>(num))
                 .collect::<Result<Vec<_>, _>>()?,
         );
@@ -317,10 +321,10 @@ impl GDBManager {
     pub async fn get_registers(
         &self,
         session_id: &str,
-        reg_list: Option<String>,
+        reg_list: Option<Vec<String>>,
     ) -> AppResult<Vec<Register>> {
         let reg_list = reg_list
-            .map(|s| s.split(',').map(|num| num.parse::<usize>()).collect::<Result<Vec<_>, _>>())
+            .map(|s| s.iter().map(|num| num.parse::<usize>()).collect::<Result<Vec<_>, _>>())
             .transpose()?;
         let command = MiCommand::data_list_register_names(reg_list.clone());
         let response = self.send_command_with_timeout(session_id, &command).await?;
@@ -355,10 +359,10 @@ impl GDBManager {
     pub async fn get_register_names(
         &self,
         session_id: &str,
-        reg_list: Option<String>,
+        reg_list: Option<Vec<String>>,
     ) -> AppResult<Vec<Register>> {
         let reg_list = reg_list
-            .map(|s| s.split(',').map(|num| num.parse::<usize>()).collect::<Result<Vec<_>, _>>())
+            .map(|s| s.iter().map(|num| num.parse::<usize>()).collect::<Result<Vec<_>, _>>())
             .transpose()?;
         let command = MiCommand::data_list_register_names(reg_list);
         let response = self.send_command_with_timeout(session_id, &command).await?;
