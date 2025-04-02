@@ -222,6 +222,44 @@ pub async fn get_register_names_tool(
 }
 
 #[tool(
+    name = "read_memory",
+    description = "Read the memory in the current GDB session. \
+        This command attempts to read all accessible memory regions in the specified range. \
+        First, all regions marked as unreadable in the memory map (if one is defined) will be skipped. \
+        See Memory Region Attributes. Second, GDB will attempt to read the remaining regions. \
+        For each one, if reading full region results in an errors, GDB will try to read a subset of the region. \
+        In general, every single memory unit in the region may be readable or not, \
+        and the only way to read every readable unit is to try a read at every address, \
+        which is not practical. Therefore, GDB will attempt to read all accessible memory units at either beginning \
+        or the end of the region, using a binary division scheme. This heuristic works well for reading across \
+        a memory map boundary. Note that if a region has a readable range that is neither \
+        at the beginning or the end, GDB will not read it.\
+        The command will return a JSON object with the following fields: \
+            begin: The start address of the memory block, as hexadecimal literal. \
+            end: The end address of the memory block, as hexadecimal literal. \
+            offset: The offset of the memory block, as hexadecimal literal, relative to the start address passed to -data-read-memory-bytes.\
+            contents: The contents of the memory block, in hex bytes.",
+    params(
+        session_id = "The ID of the GDB session",
+        address = "An expression specifying the address of the first addressable memory unit to be read. \
+            Complex expressions containing embedded white space should be quoted using the C convention.",
+        count = "The number of addressable memory units to read. This should be an integer literal.",
+        offset = "The offset relative to address at which to start reading. This should be an integer literal. \
+            This option is provided so that a frontend is not required to first evaluate address and \
+            then perform address arithmetic itself.",
+    )
+)]
+pub async fn read_memory_tool(
+    session_id: String,
+    address: String,
+    count: usize,
+    offset: Option<isize>,
+) -> Result<ToolResponseContent> {
+    let memory = GDB_MANAGER.read_memory(&session_id, offset, address, count).await?;
+    Ok(tool_text_content!(format!("Memory: {}", serde_json::to_string(&memory)?)))
+}
+
+#[tool(
     name = "continue_execution",
     description = "Continue program execution",
     params(session_id = "The ID of the GDB session")

@@ -65,6 +65,7 @@ You can adjust server configuration by modifying the `src/config.rs` file or by 
 - `get_stack_frames` - Get stack frame information
 - `get_local_variables` - Get local variables
 - `get_registers` - Get registers
+- `read_memory` - Read memory contents
 
 ## License
 

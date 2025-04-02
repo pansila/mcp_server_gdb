@@ -517,6 +517,20 @@ impl MiCommand {
         MiCommand { operation: "data-list-changed-registers", ..Default::default() }
     }
 
+    /// Read all accessible memory regions in the specified range
+    pub fn data_read_memory_bytes(
+        offset: Option<isize>,
+        address: String,
+        count: usize,
+    ) -> MiCommand {
+        let mut options: Vec<OsString> =
+            if let Some(offset) = offset { vec![format!("-o {}", offset).into()] } else { vec![] };
+        options.push(address.into());
+        options.push(count.to_string().into());
+        MiCommand { operation: "data-read-memory-bytes", options: Some(options), parameters: None }
+    }
+
+    /// Empty command, used for testing purposes
     pub fn empty() -> MiCommand {
         MiCommand { operation: "", ..Default::default() }
     }

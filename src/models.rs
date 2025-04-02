@@ -326,6 +326,21 @@ impl<'de> Deserialize<'de> for RegisterRaw {
         }
     }
 }
+
+// Define memory output layout
+#[skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Memory {
+    /// The start address of the memory block, as hexadecimal literal.
+    pub begin: String,
+    /// The end address of the memory block, as hexadecimal literal.
+    pub end: String,
+    /// The offset of the memory block, as hexadecimal literal, relative to the start address passed to -data-read-memory-bytes.
+    pub offset: String,
+    /// The contents of the memory block, in hex bytes.
+    pub contents: String,
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

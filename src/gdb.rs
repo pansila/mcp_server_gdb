@@ -14,7 +14,7 @@ use crate::error::{AppError, AppResult};
 use crate::mi::commands::{BreakPointLocation, BreakPointNumber, MiCommand, RegisterFormat};
 use crate::mi::output::{OutOfBandRecord, ResultClass, ResultRecord};
 use crate::mi::{GDB, GDBBuilder};
-use crate::models::{BreakPoint, GDBSession, GDBSessionStatus, Register, StackFrame, Variable};
+use crate::models::{BreakPoint, GDBSession, GDBSessionStatus, Register, StackFrame, Variable, Memory};
 
 /// GDB Session Manager
 pub struct GDBManager {
@@ -372,6 +372,26 @@ impl GDBManager {
                 .results
                 .get("register-values")
                 .ok_or(AppError::NotFound("expect register-values".to_string()))?
+                .to_owned(),
+        )?)
+    }
+
+    /// Read memory contents
+    pub async fn read_memory(
+        &self,
+        session_id: &str,
+        offset: Option<isize>,
+        address: String,
+        count: usize,
+    ) -> AppResult<Vec<Memory>> {
+        let command = MiCommand::data_read_memory_bytes(offset, address, count);
+        let response = self.send_command_with_timeout(session_id, &command).await?;
+
+        Ok(serde_json::from_value(
+            response
+                .results
+                .get("memory")
+                .ok_or(AppError::NotFound("expect memory".to_string()))?
                 .to_owned(),
         )?)
     }
