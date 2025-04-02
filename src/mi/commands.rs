@@ -278,7 +278,7 @@ impl MiCommand {
         MiCommand { operation: "break-list", ..Default::default() }
     }
 
-    pub fn insert_watchpoing(expression: &str, mode: WatchMode) -> MiCommand {
+    pub fn insert_watchpoint(expression: &str, mode: WatchMode) -> MiCommand {
         let options = match mode {
             WatchMode::Write => None,
             WatchMode::Read => Some(vec!["-r".into()]),

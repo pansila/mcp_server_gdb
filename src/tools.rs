@@ -152,14 +152,14 @@ pub async fn set_breakpoint_tool(
     description = "Delete one or more breakpoints in the code",
     params(
         session_id = "The ID of the GDB session",
-        breakpoints = "The list of the breakpoint numbers, separated by commas"
+        breakpoints = "The array of the breakpoint numbers to delete"
     )
 )]
 pub async fn delete_breakpoint_tool(
     session_id: String,
-    breakpoints: String,
+    breakpoints: Vec<String>,
 ) -> Result<ToolResponseContent> {
-    GDB_MANAGER.delete_breakpoint(&session_id, &breakpoints).await?;
+    GDB_MANAGER.delete_breakpoint(&session_id, breakpoints).await?;
     Ok(tool_text_content!("Breakpoints deleted".to_string()))
 }
 
@@ -194,12 +194,12 @@ pub async fn get_local_variables_tool(
     description = "Get registers in the current GDB session",
     params(
         session_id = "The ID of the GDB session",
-        reg_list = "The number of the registers to get, separated by commas if more than one",
+        reg_list = "The array of the registers to get",
     )
 )]
 pub async fn get_registers_tool(
     session_id: String,
-    reg_list: Option<String>,
+    reg_list: Option<Vec<String>>,
 ) -> Result<ToolResponseContent> {
     let registers = GDB_MANAGER.get_registers(&session_id, reg_list).await?;
     Ok(tool_text_content!(format!("Registers: {}", serde_json::to_string(&registers)?)))
@@ -207,15 +207,15 @@ pub async fn get_registers_tool(
 
 #[tool(
     name = "get_register_names",
-    description = "Get registers in the current GDB session",
+    description = "Get register names in the current GDB session",
     params(
         session_id = "The ID of the GDB session",
-        reg_list = "The number of the registers to get, separated by commas if more than one",
+        reg_list = "The array of the registers to get",
     )
 )]
 pub async fn get_register_names_tool(
     session_id: String,
-    reg_list: Option<String>,
+    reg_list: Option<Vec<String>>,
 ) -> Result<ToolResponseContent> {
     let registers = GDB_MANAGER.get_register_names(&session_id, reg_list).await?;
     Ok(tool_text_content!(format!("Registers: {}", serde_json::to_string(&registers)?)))
