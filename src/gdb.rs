@@ -3,7 +3,6 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde_json::Value;
 use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
@@ -345,9 +344,8 @@ impl GDBManager {
         )?;
         Ok(registers
             .into_iter()
-            .zip(names.into_iter())
-            .map(|(mut r, n)| {
-                r.name = Some(n);
+            .map(|mut r| {
+                r.name = names.get(r.number).cloned();
                 r
             })
             .collect::<_>())
