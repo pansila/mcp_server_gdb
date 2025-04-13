@@ -14,9 +14,12 @@ use crate::error::{AppError, AppResult};
 use crate::mi::commands::{BreakPointLocation, BreakPointNumber, MiCommand, RegisterFormat};
 use crate::mi::output::{OutOfBandRecord, ResultClass, ResultRecord};
 use crate::mi::{GDB, GDBBuilder};
-use crate::models::{BreakPoint, GDBSession, GDBSessionStatus, Register, StackFrame, Variable, Memory};
+use crate::models::{
+    BreakPoint, GDBSession, GDBSessionStatus, Memory, Register, StackFrame, Variable,
+};
 
 /// GDB Session Manager
+#[derive(Default)]
 pub struct GDBManager {
     /// Configuration
     config: Config,
@@ -35,11 +38,6 @@ struct GDBSessionHandle {
 }
 
 impl GDBManager {
-    /// Create a new GDB manager
-    pub fn new() -> Self {
-        Self { config: Config::default(), sessions: Mutex::new(HashMap::new()) }
-    }
-
     /// Create a new GDB session
     pub async fn create_session(
         &self,

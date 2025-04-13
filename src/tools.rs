@@ -8,8 +8,10 @@ use mcp_core::types::ToolResponseContent;
 use mcp_core_macros::tool;
 
 use crate::gdb::GDBManager;
+use crate::mi::GDB;
 
-static GDB_MANAGER: LazyLock<Arc<GDBManager>> = LazyLock::new(|| Arc::new(GDBManager::new()));
+pub static GDB_MANAGER: LazyLock<Arc<GDBManager>> =
+    LazyLock::new(|| Arc::new(GDBManager::default()));
 
 pub fn init_gdb_manager() {
     LazyLock::force(&GDB_MANAGER);

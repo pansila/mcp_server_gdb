@@ -1,4 +1,6 @@
+use anyhow;
 use thiserror::Error;
+use tokio::task::JoinError;
 
 /// Application error types
 #[derive(Error, Debug)]
@@ -32,6 +34,12 @@ pub enum AppError {
 
     #[error("Parse Json error: {0}")]
     ParseJsonError(#[from] serde_json::error::Error),
+
+    #[error("Anyhow error: {0}")]
+    AnyhowError(#[from] anyhow::Error),
+
+    #[error("Task join error: {0}")]
+    JoinError(#[from] JoinError),
 }
 
 /// Application result type
