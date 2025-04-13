@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
         TransportType::Stdio => {
             let transport = ClientStdioTransport::new(
                 "./target/debug/mcp-server-gdb",
-                &["--log-level", "debug"],
+                &["--log-level", "debug", "--disable-tui"],
             )?;
             let client = ClientBuilder::new(transport).build();
 
@@ -109,6 +109,8 @@ async fn main() -> Result<()> {
             Box::new(client)
         }
     };
+
+    info!("Client created");
 
     // Create GDB session
     let session_response = call_tool(
