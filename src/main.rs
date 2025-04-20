@@ -221,7 +221,7 @@ async fn main() -> Result<(), AppError> {
     let app = Arc::new(Mutex::new(Default::default()));
     
     // Initialize terminal
-    let (terminal, tui_handle, quit_receiver) = if !args.disable_tui {
+    let ui_handle = if !args.disable_tui {
         // TODO: add panic hook to restore terminal
         enable_raw_mode()?;
         execute!(std::io::stdout(), EnterAlternateScreen)?;
@@ -235,20 +235,19 @@ async fn main() -> Result<(), AppError> {
                     if let Err(e) = run_app(terminal_for_tui, app_clone).await {
                         error!("failed to run app: {}", e);
                     } else {
-                        debug!("TUI closed");
                         quit_sender.send(()).unwrap();
                     }
                 });
-                (Some(terminal), Some(tui_handle), Some(quit_receiver))
+                Some((terminal, tui_handle, quit_receiver))
             }
             Err(e) => {
                 warn!("Failed to initialize terminal: {}", e);
-                (None, None, None)
+                None
             }
         }
     } else {
         debug!("TUI disabled by command line argument");
-        (None, None, None)
+        None
     };
 
     tools::init_gdb_manager();
@@ -298,9 +297,19 @@ async fn main() -> Result<(), AppError> {
     });
 
     // Wait for quit signal if TUI is running
-    if let Some(quit_receiver) = quit_receiver {
-        let _ = quit_receiver.await;
-        debug!("quit signal received");
+    if let Some((terminal, tui_handle, quit_receiver)) = ui_handle {
+        if let Err(e) = quit_receiver.await {
+            error!("failed to receive quit signal: {}", e);
+        }
+
+        tui_handle.abort();
+
+        // Restore terminal if it was initialized
+        disable_raw_mode()?;
+        let mut terminal = terminal.lock().await;
+        execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+        terminal.show_cursor()?;
+        debug!("TUI closed");
     } else {
         // If no TUI, wait for transport to complete
         debug!("waiting for transport to complete");
@@ -324,21 +333,7 @@ async fn main() -> Result<(), AppError> {
         }
     }
 
-    // Abort TUI task if it exists
-    if let Some(tui_handle) = tui_handle {
-        debug!("aborting TUI task");
-        tui_handle.abort();
-    }
-
-    // Restore terminal if it was initialized
-    if let Some(terminal) = terminal {
-        debug!("restoring terminal");
-        disable_raw_mode()?;
-        let mut terminal = terminal.lock().await;
-        execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
-        terminal.show_cursor()?;
-    }
-
+    // TODO: transport is still running due to a sync call (reader.read_line) in the dependency
     std::process::exit(0);
 }
 
@@ -373,7 +368,11 @@ async fn run_app<B: Backend>(
             }
         }
 
-        if crossterm::event::poll(Duration::from_millis(10))? {
+        let poll_result = tokio::task::spawn_blocking(|| {
+            event::poll(Duration::from_millis(10))
+        }).await?;
+
+        if poll_result? {
             if let Event::Key(key) = event::read()? {
                 debug!("key: {:?}", key);
                 let mut app = app.lock().await;
