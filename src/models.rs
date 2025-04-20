@@ -14,7 +14,6 @@ use nom::sequence::{delimited, preceded, separated_pair};
 use nom::{IResult, Parser};
 use serde::{Deserialize, Serialize, de};
 use serde_with::{DisplayFromStr, serde_as, skip_serializing_none};
-use tokio::net::tcp::ReuniteError;
 use tracing::debug;
 
 use crate::error::AppError;
