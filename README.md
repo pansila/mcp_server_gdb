@@ -9,7 +9,7 @@ A GDB/MI protocol server based on the MCP protocol, providing remote application
 - View stack information and variables
 - Control program execution (run, pause, step, etc.)
 - Support concurrent multi-session debugging
-- A built-in TUI to inspect agent behaviors so that you can improve your prompt
+- A built-in TUI to inspect agent behaviors so that you can improve your prompt (WIP)
 
 ## Installation
 

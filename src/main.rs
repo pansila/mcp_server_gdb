@@ -9,6 +9,7 @@ mod ui;
 use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
@@ -16,15 +17,14 @@ use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use crossterm::event::EventStream;
 use error::{AppError, AppResult};
-use futures::future::FutureExt;
-use futures::{StreamExt, select};
+use futures::StreamExt;
 use gdb::GDBManager;
 use mcp_core::server::{Server, ServerProtocolBuilder};
 use mcp_core::transport::{ServerSseTransport, ServerStdioTransport, Transport};
 use mcp_core::types::ServerCapabilities;
 use models::{ASM, BT, MemoryMapping, MemoryType, ResolveSymbol, TrackedRegister};
 use ratatui::Terminal;
-use ratatui::crossterm::event::{self, DisableMouseCapture, Event, KeyCode, KeyModifiers};
+use ratatui::crossterm::event::{DisableMouseCapture, Event, KeyCode};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -32,7 +32,7 @@ use ratatui::crossterm::terminal::{
 use ratatui::prelude::Backend;
 use ratatui::widgets::ScrollbarState;
 use serde_json::json;
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tools::GDB_MANAGER;
 use tracing::{debug, error, info, warn};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -45,6 +45,18 @@ use ui::hexdump::HEXDUMP_WIDTH;
 enum TransportType {
     Stdio,
     Sse,
+}
+
+impl FromStr for TransportType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "stdio" => Ok(TransportType::Stdio),
+            "sse" => Ok(TransportType::Sse),
+            _ => Err(format!("Invalid transport type: {}", s)),
+        }
+    }
 }
 
 pub static TRANSPORT: LazyLock<Mutex<Option<Arc<Box<dyn Transport>>>>> =
@@ -69,12 +81,25 @@ struct Args {
     log_level: String,
 
     /// Transport type to use
-    #[arg(value_enum, default_value_t = TransportType::Stdio)]
+    #[arg(
+        value_enum,
+        default_value_t = TransportType::Stdio,
+        required_if_eq("enable_tui", "true"),
+        value_parser = clap::builder::ValueParser::new(|s: &str| -> Result<TransportType, String> {
+            let t = s.parse::<TransportType>()?;
+            if t == TransportType::Stdio && std::env::args().any(|arg| arg == "--enable-tui") {
+                Err("When TUI is enabled, transport must be SSE".to_string())
+            } else {
+                Ok(t)
+            }
+        }),
+        help = "Transport type to use, can only use SSE when TUI is enabled, otherwise key events can be lost"
+    )]
     transport: TransportType,
 
-    /// Disable TUI
+    /// Enable TUI
     #[arg(long)]
-    disable_tui: bool,
+    enable_tui: bool,
 }
 
 #[derive(Copy, Clone, Default, PartialEq)]
@@ -154,6 +179,8 @@ struct App {
     /// Left side of status in TUI
     status: String,
     bt: Vec<BT>,
+    /// Exit the app
+    _exit: bool,
 }
 
 impl App {
@@ -226,7 +253,7 @@ async fn main() -> Result<(), AppError> {
     let app = Arc::new(Mutex::new(Default::default()));
 
     // Initialize terminal
-    let ui_handle = if !args.disable_tui {
+    let ui_handle = if args.enable_tui {
         // TODO: add panic hook to restore terminal
         enable_raw_mode()?;
         execute!(std::io::stdout(), EnterAlternateScreen)?;
@@ -363,191 +390,216 @@ async fn run_app<B: Backend + Send + 'static>(
     terminal: Arc<Mutex<Terminal<B>>>,
     app: Arc<Mutex<App>>,
 ) -> AppResult<()> {
-    let app_clone = app.clone();
+    let app_clone1 = app.clone();
+    let app_clone2 = app.clone();
     let mut reader = EventStream::new();
+    let (tx, mut rx) = mpsc::channel(100);
 
-    tokio::spawn(async move {
-        {
-            let mut terminal = terminal.lock().await;
-            let mut app = app_clone.lock().await;
-            if let Err(e) = terminal.draw(|f| {
-                ui::ui(f, &mut app);
-            }) {
-                error!("failed to draw: {}", e);
-            }
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    });
+    let event_loop = tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if let Event::Key(key) = event {
+                debug!("key >>> {:?}", key);
+                let mut app = app_clone1.lock().await;
+                match key.code {
+                    KeyCode::Tab => {
+                        app.mode = app.mode.next();
+                    }
+                    KeyCode::F(1) => {
+                        app.mode = Mode::All;
+                    }
+                    KeyCode::F(2) => {
+                        app.mode = Mode::OnlyRegister;
+                    }
+                    KeyCode::F(3) => {
+                        app.mode = Mode::OnlyStack;
+                    }
+                    KeyCode::F(4) => {
+                        app.mode = Mode::OnlyInstructions;
+                    }
+                    KeyCode::F(5) => {
+                        app.mode = Mode::OnlyOutput;
+                    }
+                    KeyCode::F(6) => {
+                        app.mode = Mode::OnlyMapping;
+                    }
+                    KeyCode::F(7) => {
+                        app.mode = Mode::OnlyHexdump;
+                    }
+                    // output
+                    KeyCode::Char('g') if app.mode == Mode::OnlyOutput => {
+                        app.output_scroll.scroll = 0;
+                        app.output_scroll.state = app.output_scroll.state.position(0);
+                    }
+                    KeyCode::Char('G') if app.mode == Mode::OnlyOutput => {
+                        let len = app.output.len();
+                        app.output_scroll.scroll = len;
+                        app.output_scroll.state.last();
+                    }
+                    KeyCode::Char('j') if app.mode == Mode::OnlyOutput => {
+                        let len = app.output.len();
+                        scroll_down(1, &mut app.output_scroll, len);
+                    }
+                    KeyCode::Char('k') if app.mode == Mode::OnlyOutput => {
+                        scroll_up(1, &mut app.output_scroll);
+                    }
+                    KeyCode::Char('J') if app.mode == Mode::OnlyOutput => {
+                        let len = app.output.len();
+                        scroll_down(50, &mut app.output_scroll, len);
+                    }
+                    KeyCode::Char('K') if app.mode == Mode::OnlyOutput => {
+                        scroll_up(50, &mut app.output_scroll);
+                    }
+                    // memory mapping
+                    KeyCode::Char('g') if app.mode == Mode::OnlyMapping => {
+                        app.memory_map_scroll.scroll = 0;
+                        app.memory_map_scroll.state = app.memory_map_scroll.state.position(0);
+                    }
+                    KeyCode::Char('G') if app.mode == Mode::OnlyMapping => {
+                        if let Some(memory) = app.memory_map.as_ref() {
+                            let len = memory.len();
+                            let memory_map_scroll = &mut app.memory_map_scroll;
+                            memory_map_scroll.scroll = len;
+                            memory_map_scroll.state.last();
+                        }
+                    }
+                    KeyCode::Char('j') if app.mode == Mode::OnlyMapping => {
+                        if let Some(memory) = app.memory_map.as_ref() {
+                            let len = memory.len() / HEXDUMP_WIDTH;
+                            scroll_down(1, &mut app.memory_map_scroll, len);
+                        }
+                    }
+                    KeyCode::Char('k') if app.mode == Mode::OnlyMapping => {
+                        scroll_up(1, &mut app.memory_map_scroll);
+                    }
+                    KeyCode::Char('J') if app.mode == Mode::OnlyMapping => {
+                        if let Some(memory) = app.memory_map.as_ref() {
+                            let len = memory.len() / HEXDUMP_WIDTH;
+                            scroll_down(50, &mut app.memory_map_scroll, len);
+                        }
+                    }
+                    KeyCode::Char('K') if app.mode == Mode::OnlyMapping => {
+                        scroll_up(50, &mut app.memory_map_scroll);
+                    }
+                    // hexdump
+                    KeyCode::Char('g') if app.mode == Mode::OnlyHexdump => {
+                        app.hexdump_scroll.scroll = 0;
+                        app.hexdump_scroll.state = app.hexdump_scroll.state.position(0);
+                    }
+                    KeyCode::Char('G') if app.mode == Mode::OnlyHexdump => {
+                        if let Some(hexdump) = app.hexdump.as_ref() {
+                            let len = hexdump.1.len() / HEXDUMP_WIDTH;
+                            let hexdump_scroll = &mut app.hexdump_scroll;
+                            hexdump_scroll.scroll = len;
+                            hexdump_scroll.state.last();
+                        }
+                    }
+                    KeyCode::Char('H') if app.mode == Mode::OnlyHexdump => {
+                        if let Some(find_heap) = app.find_first_heap().await {
+                            let memory = GDB_MANAGER
+                                .read_memory(
+                                    "",
+                                    Some(find_heap.start_address as isize),
+                                    "0".to_string(),
+                                    find_heap.size as usize,
+                                )
+                                .await?;
+                            // TODO: print memory
 
-    loop {
-        let mut event = reader.next().fuse();
-
-        select! {
-        event = event => {
-            if let Some(Ok(event)) = event {
-                if let Event::Key(key) = event {
-                    debug!("key: {:?}", key);
-                    let mut app = app.lock().await;
-                    match key.code {
-                        KeyCode::Char('q') => {
-                            return Ok(());
-                        }
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            return Ok(());
-                        }
-                        KeyCode::Tab => {
-                            app.mode = app.mode.next();
-                        }
-                        KeyCode::F(1) => {
-                            app.mode = Mode::All;
-                        }
-                        KeyCode::F(2) => {
-                            app.mode = Mode::OnlyRegister;
-                        }
-                        KeyCode::F(3) => {
-                            app.mode = Mode::OnlyStack;
-                        }
-                        KeyCode::F(4) => {
-                            app.mode = Mode::OnlyInstructions;
-                        }
-                        KeyCode::F(5) => {
-                            app.mode = Mode::OnlyOutput;
-                        }
-                        KeyCode::F(6) => {
-                            app.mode = Mode::OnlyMapping;
-                        }
-                        KeyCode::F(7) => {
-                            app.mode = Mode::OnlyHexdump;
-                        }
-                        // output
-                        KeyCode::Char('g') if app.mode == Mode::OnlyOutput => {
-                            app.output_scroll.scroll = 0;
-                            app.output_scroll.state = app.output_scroll.state.position(0);
-                        }
-                        KeyCode::Char('G') if app.mode == Mode::OnlyOutput => {
-                            let len = app.output.len();
-                            app.output_scroll.scroll = len;
-                            app.output_scroll.state.last();
-                        }
-                        KeyCode::Char('j') if app.mode == Mode::OnlyOutput => {
-                            let len = app.output.len();
-                            scroll_down(1, &mut app.output_scroll, len);
-                        }
-                        KeyCode::Char('k') if app.mode == Mode::OnlyOutput => {
-                            scroll_up(1, &mut app.output_scroll);
-                        }
-                        KeyCode::Char('J') if app.mode == Mode::OnlyOutput => {
-                            let len = app.output.len();
-                            scroll_down(50, &mut app.output_scroll, len);
-                        }
-                        KeyCode::Char('K') if app.mode == Mode::OnlyOutput => {
-                            scroll_up(50, &mut app.output_scroll);
-                        }
-                        // memory mapping
-                        KeyCode::Char('g') if app.mode == Mode::OnlyMapping => {
-                            app.memory_map_scroll.scroll = 0;
-                            app.memory_map_scroll.state = app.memory_map_scroll.state.position(0);
-                        }
-                        KeyCode::Char('G') if app.mode == Mode::OnlyMapping => {
-                            if let Some(memory) = app.memory_map.as_ref() {
-                                let len = memory.len();
-                                let memory_map_scroll = &mut app.memory_map_scroll;
-                                memory_map_scroll.scroll = len;
-                                memory_map_scroll.state.last();
-                            }
-                        }
-                        KeyCode::Char('j') if app.mode == Mode::OnlyMapping => {
-                            if let Some(memory) = app.memory_map.as_ref() {
-                                let len = memory.len() / HEXDUMP_WIDTH;
-                                scroll_down(1, &mut app.memory_map_scroll, len);
-                            }
-                        }
-                        KeyCode::Char('k') if app.mode == Mode::OnlyMapping => {
-                            scroll_up(1, &mut app.memory_map_scroll);
-                        }
-                        KeyCode::Char('J') if app.mode == Mode::OnlyMapping => {
-                            if let Some(memory) = app.memory_map.as_ref() {
-                                let len = memory.len() / HEXDUMP_WIDTH;
-                                scroll_down(50, &mut app.memory_map_scroll, len);
-                            }
-                        }
-                        KeyCode::Char('K') if app.mode == Mode::OnlyMapping => {
-                            scroll_up(50, &mut app.memory_map_scroll);
-                        }
-                        // hexdump
-                        KeyCode::Char('g') if app.mode == Mode::OnlyHexdump => {
+                            // reset position
                             app.hexdump_scroll.scroll = 0;
                             app.hexdump_scroll.state = app.hexdump_scroll.state.position(0);
                         }
-                        KeyCode::Char('G') if app.mode == Mode::OnlyHexdump => {
-                            if let Some(hexdump) = app.hexdump.as_ref() {
-                                let len = hexdump.1.len() / HEXDUMP_WIDTH;
-                                let hexdump_scroll = &mut app.hexdump_scroll;
-                                hexdump_scroll.scroll = len;
-                                hexdump_scroll.state.last();
-                            }
-                        }
-                        KeyCode::Char('H') if app.mode == Mode::OnlyHexdump => {
-                            if let Some(find_heap) = app.find_first_heap().await {
-                                let memory = GDB_MANAGER
-                                    .read_memory(
-                                        "",
-                                        Some(find_heap.start_address as isize),
-                                        "0".to_string(),
-                                        find_heap.size as usize,
-                                    )
-                                    .await?;
-                                // TODO: print memory
+                    }
+                    KeyCode::Char('T') if app.mode == Mode::OnlyHexdump => {
+                        if let Some(find_stack) = app.find_first_stack().await {
+                            let memory = GDB_MANAGER
+                                .read_memory(
+                                    "",
+                                    Some(find_stack.start_address as isize),
+                                    "0".to_string(),
+                                    find_stack.size as usize,
+                                )
+                                .await?;
+                            // TODO: print memory
 
-                                // reset position
-                                app.hexdump_scroll.scroll = 0;
-                                app.hexdump_scroll.state = app.hexdump_scroll.state.position(0);
-                            }
+                            // reset position
+                            app.hexdump_scroll.scroll = 0;
+                            app.hexdump_scroll.state = app.hexdump_scroll.state.position(0);
                         }
-                        KeyCode::Char('T') if app.mode == Mode::OnlyHexdump => {
-                            if let Some(find_stack) = app.find_first_stack().await {
-                                let memory = GDB_MANAGER
-                                    .read_memory(
-                                        "",
-                                        Some(find_stack.start_address as isize),
-                                        "0".to_string(),
-                                        find_stack.size as usize,
-                                    )
-                                    .await?;
-                                // TODO: print memory
-
-                                // reset position
-                                app.hexdump_scroll.scroll = 0;
-                                app.hexdump_scroll.state = app.hexdump_scroll.state.position(0);
-                            }
+                    }
+                    KeyCode::Char('j') if app.mode == Mode::OnlyHexdump => {
+                        if let Some(hexdump) = app.hexdump.as_ref() {
+                            let len = hexdump.1.len() / HEXDUMP_WIDTH;
+                            scroll_down(1, &mut app.hexdump_scroll, len);
                         }
-                        KeyCode::Char('j') if app.mode == Mode::OnlyHexdump => {
-                            if let Some(hexdump) = app.hexdump.as_ref() {
-                                let len = hexdump.1.len() / HEXDUMP_WIDTH;
-                                scroll_down(1, &mut app.hexdump_scroll, len);
-                            }
+                    }
+                    KeyCode::Char('k') if app.mode == Mode::OnlyHexdump => {
+                        scroll_up(1, &mut app.hexdump_scroll);
+                    }
+                    KeyCode::Char('J') if app.mode == Mode::OnlyHexdump => {
+                        if let Some(hexdump) = app.hexdump.as_ref() {
+                            let len = hexdump.1.len() / HEXDUMP_WIDTH;
+                            scroll_down(50, &mut app.hexdump_scroll, len);
                         }
-                        KeyCode::Char('k') if app.mode == Mode::OnlyHexdump => {
-                            scroll_up(1, &mut app.hexdump_scroll);
-                        }
-                        KeyCode::Char('J') if app.mode == Mode::OnlyHexdump => {
-                            if let Some(hexdump) = app.hexdump.as_ref() {
-                                let len = hexdump.1.len() / HEXDUMP_WIDTH;
-                                scroll_down(50, &mut app.hexdump_scroll, len);
-                            }
-                        }
-                        KeyCode::Char('K') if app.mode == Mode::OnlyHexdump => {
-                            scroll_up(1, &mut app.hexdump_scroll);
-                        }
-                        _ => {
-                            // app.input.handle_event(&Event::Key(key));
-                        }
+                    }
+                    KeyCode::Char('K') if app.mode == Mode::OnlyHexdump => {
+                        scroll_up(1, &mut app.hexdump_scroll);
+                    }
+                    _ => {
+                        // app.input.handle_event(&Event::Key(key));
                     }
                 }
             }
         }
+        let mut app = app.lock().await;
+        app._exit = true;
+        Ok::<(), AppError>(())
+    });
+
+    let draw_loop = tokio::task::spawn_blocking(move || {
+        loop {
+            {
+                let mut terminal = terminal.blocking_lock();
+                let mut app = app_clone2.blocking_lock();
+                if app._exit {
+                    break;
+                }
+                if let Err(e) = terminal.draw(|f| {
+                    ui::ui(f, &mut app);
+                }) {
+                    error!("failed to draw: {}", e);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    });
+
+    // Event collection task
+    while let Some(Ok(event)) = reader.next().await {
+        debug!("event <<< {:?}", event);
+        if let Event::Key(key) = event {
+            if key.code == KeyCode::Char('q') {
+                drop(tx);
+                break;
+            }
+            if let Err(e) = tx.send(event).await {
+                error!("failed to send event: {}", e);
+                break;
+            }
         }
     }
+
+    // Wait for processor to finish
+    if let Err(e) = event_loop.await {
+        error!("event processor error: {}", e);
+    }
+
+    // Wait for draw task to finish
+    if let Err(e) = draw_loop.await {
+        error!("failed to wait for draw task to finish: {}", e);
+    }
+
+    Ok(())
 }
 
 /// Register all debugging tools to the server

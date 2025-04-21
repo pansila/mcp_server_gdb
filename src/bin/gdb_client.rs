@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
         TransportType::Stdio => {
             let transport = ClientStdioTransport::new(
                 "./target/debug/mcp-server-gdb",
-                &["--log-level", "debug", "--disable-tui"],
+                &["--log-level", "debug"],
             )?;
             let client = ClientBuilder::new(transport).build();
 
